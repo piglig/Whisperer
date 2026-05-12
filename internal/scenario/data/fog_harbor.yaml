@@ -1,0 +1,124 @@
+id: fog_harbor
+title: 雾港疑案（骨架版）
+version: 0.1.0
+
+locations:
+  - id: harbor
+    name: 雾港码头
+    description: 灰雾常年笼罩的木栈桥；潮水拍打着桩柱，气味混着海藻与机油。
+    connections: [pub, lighthouse, station]
+  - id: pub
+    name: 钨灯酒馆
+    description: 半地下的小酒馆，常客不多但总有人在角落低声交谈。
+    connections: [harbor, station]
+  - id: lighthouse
+    name: 北岬灯塔
+    description: 海风将塔身刻出深沟。守塔人独住此处，少与外界往来。
+    connections: [harbor]
+  - id: station
+    name: 巡警所
+    description: 仅有两名警员当值的小型驻地。墙上挂着褪色的失踪者画像。
+    connections: [harbor, pub]
+
+npcs:
+  - id: vance
+    name: 范斯医生
+    personality: 严肃寡言，眼神回避；说话短促，常用专业词汇绕开问题。
+    knowledge:
+      missing_person: knows_more_than_admits
+    relation_to_player: 0
+    location: pub
+  - id: marisa
+    name: 玛丽莎（酒馆老板娘）
+    personality: 直率，不轻信外人，但在酒过三巡后会松口；记得每位常客。
+    relation_to_player: 5
+    location: pub
+  - id: helena
+    name: 海莲娜（失踪者母亲）
+    personality: 焦虑、声音颤抖；愿意把任何线索说给愿意听的人。
+    relation_to_player: 10
+    location: station
+  - id: orin
+    name: 灯塔守欧林
+    personality: 沉默寡言，说话直白；夜晚会留意每一艘进出港的船。
+    relation_to_player: 0
+    location: lighthouse
+  - id: rourke
+    name: 巡警长官罗克
+    personality: 表面合作，私下不耐烦；多次劝外来调查员"不要插手"。
+    relation_to_player: -5
+    location: station
+
+clues:
+  - id: blood_letter
+    description: 沾血的便条；纸张潮湿，墨迹晕开，仅余半句字迹可辨。
+  - id: tide_chart
+    description: 一份手抄潮汐时刻表；某个潮位被重重圈出。
+  - id: ledger
+    description: 酒馆账册的复印页；某夜结账栏出现异常签名。
+
+items:
+  - id: lantern
+    name: 黄铜油灯
+    description: 油壳磨损但灯芯完好；适合夜路。
+    owner_type: location
+    owner_id: harbor
+
+start:
+  location: harbor
+  time_of_day: morning
+
+key_clues: [blood_letter, tide_chart, ledger]
+
+triggers:
+  - id: lighthouse_storm
+    when:
+      all:
+        - clue_found: blood_letter
+        - location_visited: lighthouse
+    then:
+      - add_event:
+          type: scenario
+          description: 暴风雨忽至，灯塔下方传出诡异的低鸣，节奏不像自然之声。
+
+  - id: pub_after_dark
+    when:
+      all:
+        - location_visited: pub
+        - time_of_day: night
+    then:
+      - update_npc_relation:
+          npc_id: marisa
+          delta: 5
+      - add_event:
+          type: scenario
+          description: 玛丽莎在打烊后留你坐下；她从柜台底层取出一份账册的复印页。
+      - mark_clue_found:
+          clue_id: ledger
+
+endings:
+  - id: solved
+    kind: success
+    when:
+      all:
+        - clue_found: blood_letter
+        - clue_found: tide_chart
+        - clue_found: ledger
+        - trigger_fired: lighthouse_storm
+    description: 凶手身份被锁定；调查员带着证据离开雾港，雾仍未散，但真相已在掌中。
+
+  - id: victim_dies
+    kind: failure
+    when:
+      all:
+        - npc_dead: helena
+    description: 救援未能赶到——海莲娜在巡警所外最后一次出现，再无消息。
+
+  - id: dismissed
+    kind: failure
+    when:
+      all:
+        - npc_relation_lt:
+            npc: rourke
+            value: -20
+    description: 罗克长官签署驱逐令；你被礼貌地送上下一班离港的船。

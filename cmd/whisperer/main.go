@@ -1,0 +1,221 @@
+// Whisperer CLI 入口。
+//
+// 用法（Anthropic 官方）:
+//
+//	export ANTHROPIC_API_KEY=sk-ant-...
+//	whisperer --db save.db --memory ./mem --scenario fog_harbor
+//
+// 用法（OpenRouter）:
+//
+//	export OPENROUTER_API_KEY=sk-or-...
+//	whisperer --provider openrouter
+//
+// 缺省加载内置 fog_harbor 剧本，自动创建 save 与一名占位调查员。
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"math/rand/v2"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
+
+	"github.com/zhuzhenwu/whisperer/internal/agent"
+	"github.com/zhuzhenwu/whisperer/internal/memory"
+	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
+	"github.com/zhuzhenwu/whisperer/internal/store"
+	"github.com/zhuzhenwu/whisperer/internal/tui"
+)
+
+const (
+	providerAnthropic  = "anthropic"
+	providerOpenRouter = "openrouter"
+)
+
+func main() {
+	dbPath := flag.String("db", "whisperer.db", "SQLite save file path")
+	memDir := flag.String("memory", "mem", "memory persistent dir; empty for in-memory")
+	scenarioID := flag.String("scenario", "fog_harbor", "bundled scenario id")
+	saveID := flag.String("save", "", "existing save id to load; empty creates a new save")
+	provider := flag.String("provider", autoProvider(), "LLM provider: anthropic | openrouter")
+	apiKey := flag.String("api-key", "", "API key (overrides env). Anthropic→ANTHROPIC_API_KEY, OpenRouter→OPENROUTER_API_KEY")
+	modelOverride := flag.String("model", "", "override GM model id (full vendor/model on OpenRouter)")
+	modelHelperOverride := flag.String("model-helper", "", "override Haiku/helper model id")
+	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
+	flag.Parse()
+
+	if *smoke {
+		runSmoke()
+		return
+	}
+
+	resolvedKey := resolveKey(*provider, *apiKey)
+	if resolvedKey == "" {
+		fmt.Fprintf(os.Stderr,
+			"no API key found. set %s, or pass --api-key.\n",
+			envKeyName(*provider))
+		os.Exit(2)
+	}
+
+	ctx := context.Background()
+
+	st, err := store.Open(ctx, *dbPath)
+	if err != nil {
+		fail("open store", err)
+	}
+	defer st.Close()
+
+	mem, err := memory.New(*memDir, memory.NewFakeEmbedder(0))
+	if err != nil {
+		fail("open memory", err)
+	}
+	defer mem.Close()
+
+	scn, err := scenario.LoadBundled(*scenarioID)
+	if err != nil {
+		fail("load scenario", err)
+	}
+
+	currentSaveID, opening, err := ensureSave(ctx, st, scn, *saveID, mem)
+	if err != nil {
+		fail("ensure save", err)
+	}
+
+	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey)
+	if *modelOverride != "" {
+		modelGM = anthropic.Model(*modelOverride)
+	}
+	if *modelHelperOverride != "" {
+		modelNPC = anthropic.Model(*modelHelperOverride)
+	}
+
+	orch, err := orchestrator.New(orchestrator.Config{
+		Store:         st,
+		Memory:        mem,
+		Scenario:      scn,
+		LLMGM:         llm,
+		LLMNPC:        llm,
+		ModelGM:       modelGM,
+		ModelNPC:      modelNPC,
+		SaveID:        currentSaveID,
+		RNG:           rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
+		AutosaveEvery: 3,
+	})
+	if err != nil {
+		fail("build orchestrator", err)
+	}
+
+	model := tui.New(ctx, orch, st, opening)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+	if _, err := prog.Run(); err != nil {
+		fail("tui", err)
+	}
+}
+
+func runSmoke() {
+	fmt.Println("Whisperer smoke check passed (no LLM calls were made).")
+}
+
+// autoProvider 探测环境变量决定默认 provider。
+//   - 仅 ANTHROPIC_API_KEY → anthropic
+//   - 仅 OPENROUTER_API_KEY → openrouter
+//   - 都有 / 都没有 → anthropic（保守默认；用户可显式 --provider openrouter 覆盖）
+func autoProvider() string {
+	hasAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
+	hasOpenRouter := os.Getenv("OPENROUTER_API_KEY") != ""
+	if !hasAnthropic && hasOpenRouter {
+		return providerOpenRouter
+	}
+	return providerAnthropic
+}
+
+func envKeyName(provider string) string {
+	if normalizedProvider(provider) == providerOpenRouter {
+		return "OPENROUTER_API_KEY"
+	}
+	return "ANTHROPIC_API_KEY"
+}
+
+func resolveKey(provider, override string) string {
+	if override != "" {
+		return override
+	}
+	return os.Getenv(envKeyName(provider))
+}
+
+func normalizedProvider(p string) string {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case providerOpenRouter, "or":
+		return providerOpenRouter
+	default:
+		return providerAnthropic
+	}
+}
+
+// buildLLM 根据 provider 构造 Anthropic 客户端 + 选择模型常量。
+func buildLLM(provider, key string) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
+	switch normalizedProvider(provider) {
+	case providerOpenRouter:
+		return agent.NewAnthropic(agent.ClientConfig{
+				AuthToken: key,
+				BaseURL:   agent.OpenRouterBaseURL,
+			}),
+			agent.OpenRouterModelGM,
+			agent.OpenRouterModelHelper
+	default:
+		return agent.NewAnthropic(agent.ClientConfig{
+				APIKey:  key,
+				BaseURL: agent.AnthropicBaseURL, // 显式指定，避免 SDK 读取用户环境里的 ANTHROPIC_BASE_URL
+			}),
+			agent.ModelGM, agent.ModelHelper
+	}
+}
+
+// ensureSave 若 saveID 为空则创建新 save + 默认调查员 + Apply 剧本，并返回开场白。
+func ensureSave(ctx context.Context, st *store.Store, scn *scenario.Scenario, saveID string, mem *memory.Memory) (string, string, error) {
+	repo := st.Repo()
+	if saveID != "" {
+		if _, err := repo.GetSave(ctx, saveID); err != nil {
+			return "", "", fmt.Errorf("save %q not found: %w", saveID, err)
+		}
+		return saveID, "", nil
+	}
+	id := uuid.NewString()
+	if err := repo.CreateSave(ctx, store.Save{
+		ID: id, Name: "untitled", ScenarioID: scn.ID,
+	}); err != nil {
+		return "", "", err
+	}
+	if err := repo.UpsertInvestigator(ctx, store.Investigator{
+		ID: uuid.NewString(), SaveID: id,
+		Name: "未命名调查员", Occupation: "记者",
+		AttrsJSON:     `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
+		SkillsJSON:    `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
+		HP:            12, MP: 12, SAN: 60,
+		InventoryJSON: `["笔记本","钢笔"]`,
+		Active:        true,
+	}); err != nil {
+		return "", "", err
+	}
+	engine := scenario.New(scn, repo, mem)
+	if err := engine.Apply(ctx, id); err != nil {
+		return "", "", fmt.Errorf("scenario apply: %w", err)
+	}
+	opening := fmt.Sprintf(
+		"《%s》开场。剧本 id: %s。当前位置: %s。\n（输入 /help 查看命令；输入你想做的事开始游戏。）",
+		scn.Title, scn.ID, scn.Start.Location,
+	)
+	return id, opening, nil
+}
+
+func fail(msg string, err error) {
+	fmt.Fprintf(os.Stderr, "%s: %v\n", msg, err)
+	os.Exit(1)
+}

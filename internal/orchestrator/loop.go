@@ -1,0 +1,280 @@
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/anthropics/anthropic-sdk-go"
+
+	"github.com/zhuzhenwu/whisperer/internal/agent"
+	"github.com/zhuzhenwu/whisperer/internal/orchestrator/sla"
+	"github.com/zhuzhenwu/whisperer/internal/orchestrator/tools"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
+	"github.com/zhuzhenwu/whisperer/internal/store"
+)
+
+// TurnResult 是 RunTurn 的结构化输出。TUI / CLI 据此渲染。
+type TurnResult struct {
+	Narrative   string                  `json:"narrative"`
+	Trace       agent.TurnTrace         `json:"trace"`
+	Fired       []scenario.FiredTrigger `json:"fired,omitempty"`
+	Drift       scenario.DriftStatus    `json:"drift"`
+	Ending      *scenario.Ending        `json:"ending,omitempty"`
+	SLAReport   sla.Report              `json:"sla_report"`
+	Save        store.Save              `json:"save"`
+}
+
+// RunTurn 执行一次完整回合：管线见 specs/06-orchestrator-and-tui.md §RunTurn。
+//
+// 出错语义：返回 error 时 Tx 已 rollback，调用方应把错误显示给玩家但不要修改
+// 进程内 history（保持一致性）。
+func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResult, error) {
+	systemPrompt, err := o.renderSystemPrompt(ctx)
+	if err != nil {
+		return TurnResult{}, err
+	}
+
+	preSave, err := o.cfg.Store.Repo().GetSave(ctx, o.cfg.SaveID)
+	if err != nil {
+		return TurnResult{}, fmt.Errorf("get save: %w", err)
+	}
+	turnNumber := preSave.TurnCount + 1
+
+	var (
+		trace       agent.TurnTrace
+		newHistory  []anthropic.MessageParam
+		report      sla.Report
+		firedList   []scenario.FiredTrigger
+		drift       scenario.DriftStatus
+		ending      *scenario.Ending
+		finalSave   store.Save
+	)
+
+	txErr := o.cfg.Store.RunTurn(ctx, func(ctx context.Context, repo *store.Repository) error {
+		dispatcher := tools.New(repo, o.cfg.SaveID, turnNumber, o.cfg.RNG)
+		if o.cfg.Memory != nil {
+			dispatcher.WithMemory(o.cfg.Memory)
+		}
+		if o.cfg.LLMNPC != nil {
+			dispatcher.WithNPCAgent(agent.NewNPC(o.cfg.LLMNPC, o.cfg.ModelNPC))
+		}
+
+		gm, err := agent.New(agent.Config{
+			LLM:          o.cfg.LLMGM,
+			Model:        o.cfg.ModelGM,
+			SystemPrompt: systemPrompt,
+			Tools:        dispatcher.Tools(),
+			Handler:      dispatcher.Dispatch,
+		})
+		if err != nil {
+			return fmt.Errorf("build gm agent: %w", err)
+		}
+
+		// 第一次生成。
+		t, hist, err := gm.Respond(ctx, o.history, userInput)
+		if err != nil {
+			return fmt.Errorf("gm respond: %w", err)
+		}
+		trace, newHistory = t, hist
+
+		// 结构化 SLA：基于 Tx 内最新快照检查；违规 → 让 LLM 重写文本（不 rollback）。
+		// 启用 Judge 时同步跑 LLM-as-judge（SLA #3 #7）。
+		for retry := 0; retry < o.cfg.MaxSLARetries; retry++ {
+			snap, err := snapshotForSLA(ctx, repo, o.cfg.SaveID)
+			if err != nil {
+				return fmt.Errorf("sla snapshot: %w", err)
+			}
+			validator := sla.New(snap)
+			if o.cfg.Judge != nil {
+				jctx, jerr := buildJudgeContext(ctx, repo, o.cfg.SaveID, trace)
+				if jerr != nil {
+					return fmt.Errorf("judge context: %w", jerr)
+				}
+				report = validator.CheckWithJudge(ctx, trace, o.cfg.Judge, jctx)
+			} else {
+				report = validator.Check(trace)
+			}
+			if report.Passed {
+				break
+			}
+			// 把违规说明追加到 user-side 当作"GM 反馈"，要求 LLM 重写本回合 narrative。
+			feedback := buildSLAFeedback(report)
+			t, hist, err := gm.Respond(ctx, newHistory, feedback)
+			if err != nil {
+				return fmt.Errorf("gm respond (sla retry %d): %w", retry+1, err)
+			}
+			trace, newHistory = t, hist
+		}
+		if !report.Passed {
+			// 仍未通过 → 接受最后一次输出，标记降级。orchestrator 上层可据此 logging。
+			report.Passed = false
+		}
+
+		// 触发器 + drift + endings 仍在同 Tx 内执行。注意：必须用 tx-scoped repo，
+		// 否则会与外层 Tx 抢同一条 SQLite 连接（SetMaxOpenConns(1)）→ 死锁。
+		txEngine := scenario.New(o.cfg.Scenario, repo, o.cfg.Memory)
+		txDetector := scenario.NewDetector(o.cfg.Scenario, repo)
+
+		fired, err := txEngine.Evaluate(ctx, o.cfg.SaveID)
+		if err != nil {
+			return fmt.Errorf("trigger evaluate: %w", err)
+		}
+		firedList = fired
+
+		// 落 GM 主回合 narrative 为一条 narrative event（便于复盘 + drift 兜底）。
+		if trace.Narrative != "" {
+			_, _ = repo.AppendEvent(ctx, store.Event{
+				SaveID:      o.cfg.SaveID,
+				Turn:        turnNumber,
+				Type:        store.EventNarrative,
+				Description: trace.Narrative,
+			})
+		}
+
+		// 推进 turn count。
+		//
+		// 关键：必须先读 Tx 内最新的 save 状态再 UpdateSaveProgress——dispatcher 可能在
+		// LLM 工具循环里调过 transition_location，把 current_location_id 改到新地点。
+		// 直接用 preSave.CurrentLocationID 会把刚写入的新 location 覆盖回去（W6 真实
+		// e2e 暴露的 bug）。
+		curSave, err := repo.GetSave(ctx, o.cfg.SaveID)
+		if err != nil {
+			return fmt.Errorf("re-read save before advance: %w", err)
+		}
+		if err := repo.UpdateSaveProgress(ctx, o.cfg.SaveID, curSave.CurrentLocationID, turnNumber); err != nil {
+			return fmt.Errorf("advance turn: %w", err)
+		}
+
+		// drift / ending
+		dst, err := txDetector.Tick(ctx, o.cfg.SaveID, turnNumber)
+		if err != nil {
+			return fmt.Errorf("drift tick: %w", err)
+		}
+		drift = dst
+
+		end, err := txEngine.CheckEndings(ctx, o.cfg.SaveID)
+		if err != nil {
+			return fmt.Errorf("check endings: %w", err)
+		}
+		// SLA #8 强制收束：投查员死亡 / SAN=0 → 用 fallback ending。
+		if end == nil && report.EndingForced {
+			end = &scenario.Ending{
+				ID:          "investigator_lost",
+				Kind:        "failure",
+				Description: "调查员意识断裂——再无法继续追查这桩谜团。",
+			}
+		}
+		ending = end
+
+		sv, err := repo.GetSave(ctx, o.cfg.SaveID)
+		if err != nil {
+			return fmt.Errorf("re-read save: %w", err)
+		}
+		finalSave = sv
+		return nil
+	})
+	if txErr != nil {
+		return TurnResult{}, txErr
+	}
+
+	// 提交后：history 替换、memory 异步落地（dispatcher 已写过对话事件；这里把
+	// GM narrative 也落到 events 集合便于后续 RAG）。
+	o.history = newHistory
+	if o.cfg.Memory != nil && trace.Narrative != "" {
+		_ = o.cfg.Memory.UpsertEvent(ctx,
+			fmt.Sprintf("turn-%d-narrative", turnNumber),
+			trace.Narrative,
+			map[string]string{"turn": fmt.Sprintf("%d", turnNumber), "kind": "gm_narrative"},
+		)
+	}
+
+	return TurnResult{
+		Narrative: trace.Narrative,
+		Trace:     trace,
+		Fired:     firedList,
+		Drift:     drift,
+		Ending:    ending,
+		SLAReport: report,
+		Save:      finalSave,
+	}, nil
+}
+
+// buildJudgeContext 抓出 LLM-judge 需要的上下文：每个 npc_speak 涉及的 NPC persona +
+// 近期台词；调查员当前的技能 JSON 与职业字段。
+func buildJudgeContext(ctx context.Context, repo *store.Repository, saveID string, trace agent.TurnTrace) (sla.JudgeContext, error) {
+	jc := sla.JudgeContext{
+		NPCPersonas:    map[string]string{},
+		NPCRecentLines: map[string][]string{},
+	}
+	for _, tc := range trace.ToolCalls {
+		if tc.Name != "npc_speak" || tc.IsError {
+			continue
+		}
+		var out struct {
+			NPCID string `json:"npc_id"`
+		}
+		if err := json.Unmarshal(tc.Output, &out); err != nil || out.NPCID == "" {
+			continue
+		}
+		if _, ok := jc.NPCPersonas[out.NPCID]; ok {
+			continue
+		}
+		npc, err := repo.GetNPC(ctx, out.NPCID)
+		if err != nil {
+			continue
+		}
+		jc.NPCPersonas[out.NPCID] = npc.Personality
+		// 近期台词：从 events 中找该 NPC 相关的 narrative（最多 5 条）。
+		events, _ := repo.ListEvents(ctx, saveID, 0, 0)
+		var lines []string
+		for _, ev := range events {
+			if ev.Type == store.EventNarrative && bytesContains(ev.RelatedEntitiesJSON, out.NPCID) {
+				lines = append(lines, ev.Description)
+			}
+		}
+		if len(lines) > 5 {
+			lines = lines[len(lines)-5:]
+		}
+		jc.NPCRecentLines[out.NPCID] = lines
+	}
+	if inv, err := repo.GetActiveInvestigator(ctx, saveID); err == nil {
+		jc.InvestigatorSkillsJSON = inv.SkillsJSON
+		jc.InvestigatorOccupation = inv.Occupation
+	}
+	return jc, nil
+}
+
+// bytesContains 是 strings.Contains 的零拷贝替代——related_entities_json 是字符串列表。
+func bytesContains(s, sub string) bool {
+	return s != "" && len(sub) > 0 && (s == sub || (len(s) > len(sub) && stringIndex(s, sub) >= 0))
+}
+
+func stringIndex(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
+// buildSLAFeedback 把 SLA Report 包成给 LLM 的 user-side 反馈。
+func buildSLAFeedback(r sla.Report) string {
+	if len(r.Violations) == 0 {
+		return ""
+	}
+	type item struct {
+		Code       sla.Code `json:"code"`
+		Message    string   `json:"message"`
+		Suggestion string   `json:"suggestion,omitempty"`
+	}
+	items := make([]item, len(r.Violations))
+	for i, v := range r.Violations {
+		items[i] = item{Code: v.Code, Message: v.Message, Suggestion: v.Suggestion}
+	}
+	b, _ := json.Marshal(items)
+	return "<sla_violation>\n" +
+		"刚才的输出违反了规则。请仅重写本回合的 narrative，使之与已经执行的 tool 调用一致；不要再触发新的状态变更。问题清单：\n" +
+		string(b) + "\n</sla_violation>"
+}
