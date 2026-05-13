@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
@@ -190,7 +191,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		)
 	}
 
-	return TurnResult{
+	result := TurnResult{
 		Narrative: trace.Narrative,
 		Trace:     trace,
 		Fired:     firedList,
@@ -198,7 +199,24 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		Ending:    ending,
 		SLAReport: report,
 		Save:      finalSave,
-	}, nil
+	}
+
+	// 写 JSONL trace（disabled 时是 no-op）。失败不影响本回合返回值——观察层
+	// 故障不能让玩家重输。
+	if err := o.traceWriter.Append(TraceEntry{
+		SaveID:     o.cfg.SaveID,
+		VariantID:  o.cfg.VariantID,
+		TurnNumber: turnNumber,
+		Result:     result,
+		UserInput:  userInput,
+	}); err != nil {
+		slog.Warn("trace write failed",
+			"err", err,
+			"path", o.traceWriter.Path(),
+			"turn", turnNumber)
+	}
+
+	return result, nil
 }
 
 // buildJudgeContext 抓出 LLM-judge 需要的上下文：每个 npc_speak 涉及的 NPC persona +

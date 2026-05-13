@@ -56,13 +56,19 @@ type Config struct {
 
 	// MetaPath 在通关时把更新后的 meta 写回磁盘；空字符串表示不持久化。
 	MetaPath string
+
+	// TraceDir 是 TurnTrace JSONL 落盘目录。每次会话写一份
+	// <TraceDir>/<save_id>/<utc_ts>.jsonl，每行是一回合的 TraceEntry。
+	// 空字符串 / "-" → 不落盘。
+	TraceDir string
 }
 
 // Orchestrator 是 W6 的核心组件。
 type Orchestrator struct {
-	cfg      Config
-	engine   *scenario.Engine
-	detector *scenario.Detector
+	cfg         Config
+	engine      *scenario.Engine
+	detector    *scenario.Detector
+	traceWriter *TraceWriter
 
 	// 持续累计的对话历史（不持久化；进程重启后清空）
 	history []anthropic.MessageParam
@@ -94,10 +100,22 @@ func New(cfg Config) (*Orchestrator, error) {
 	if cfg.MaxSLARetries == 0 {
 		cfg.MaxSLARetries = 1
 	}
+	if err := ValidateTraceDir(cfg.TraceDir); err != nil {
+		return nil, fmt.Errorf("orchestrator: trace dir: %w", err)
+	}
 	o := &Orchestrator{cfg: cfg}
 	o.engine = scenario.New(cfg.Scenario, cfg.Store.Repo(), cfg.Memory)
 	o.detector = scenario.NewDetector(cfg.Scenario, cfg.Store.Repo())
+	o.traceWriter = NewTraceWriter(cfg.TraceDir, cfg.SaveID)
 	return o, nil
+}
+
+// TracePath 返回本次会话 TurnTrace JSONL 的文件路径；未启用时返回空字符串。
+func (o *Orchestrator) TracePath() string {
+	if o.traceWriter == nil {
+		return ""
+	}
+	return o.traceWriter.Path()
 }
 
 // SaveID 返回当前绑定的 save。

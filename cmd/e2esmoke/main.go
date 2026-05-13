@@ -43,6 +43,9 @@ func main() {
 	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
 	logFormat := flag.String("log-format", "text", "log handler format: text | json")
 	logLevel := flag.String("log-level", "info", "log level: debug | info | warn | error")
+	llmMaxRetries := flag.Int("llm-max-retries", 3, "max retries on transient LLM failures (0 = SDK default)")
+	llmTimeout := flag.Duration("llm-timeout", 120*time.Second, "per-LLM-call hard timeout (0 = no timeout)")
+	traceDir := flag.String("trace-dir", "runs", "directory to append per-turn JSONL traces; '-' to disable")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -105,7 +108,7 @@ func main() {
 	engine := scenario.New(scn, st.Repo(), mem)
 	must("scenario apply", engine.Apply(ctx, saveID))
 
-	llm, modelGM, modelNPC := buildLLM(*provider, key)
+	llm, modelGM, modelNPC := buildLLM(*provider, key, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
 		modelGM = anthropic.Model(*modelOverride)
 	}
@@ -124,6 +127,7 @@ func main() {
 		SaveID:    saveID,
 		RNG:       rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
 		VariantID: chosenVariant,
+		TraceDir:  *traceDir,
 	})
 	must("build orchestrator", err)
 
@@ -279,18 +283,22 @@ func normalized(p string) string {
 	}
 }
 
-func buildLLM(provider, key string) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
+func buildLLM(provider, key string, maxRetries int, timeout time.Duration) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
 	if normalized(provider) == "openrouter" {
 		return agent.NewAnthropic(agent.ClientConfig{
-				AuthToken: key,
-				BaseURL:   agent.OpenRouterBaseURL,
+				AuthToken:      key,
+				BaseURL:        agent.OpenRouterBaseURL,
+				MaxRetries:     maxRetries,
+				RequestTimeout: timeout,
 			}),
 			agent.OpenRouterModelGM,
 			agent.OpenRouterModelHelper
 	}
 	return agent.NewAnthropic(agent.ClientConfig{
-			APIKey:  key,
-			BaseURL: agent.AnthropicBaseURL,
+			APIKey:         key,
+			BaseURL:        agent.AnthropicBaseURL,
+			MaxRetries:     maxRetries,
+			RequestTimeout: timeout,
 		}),
 		agent.ModelGM, agent.ModelHelper
 }

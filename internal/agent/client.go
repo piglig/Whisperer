@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -55,10 +56,14 @@ type Anthropic struct {
 //   - AuthToken 走 Authorization: Bearer header（OpenRouter 等代理用）
 //   - 两者择一；APIKey 与 AuthToken 同时给以 AuthToken 为准
 //   - BaseURL 缺省走 SDK 默认（生产 Anthropic 端点）
+//   - MaxRetries 走 SDK 内置指数退避；0 表示用 SDK 默认（当前为 2）
+//   - RequestTimeout 是单次 LLM 调用的硬超时；0 表示不设
 type ClientConfig struct {
-	APIKey    string
-	AuthToken string
-	BaseURL   string
+	APIKey         string
+	AuthToken      string
+	BaseURL        string
+	MaxRetries     int
+	RequestTimeout time.Duration
 }
 
 // NewAnthropic 用 ClientConfig 构造客户端。
@@ -81,6 +86,12 @@ func NewAnthropic(cfg ClientConfig) *Anthropic {
 	}
 	if cfg.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	}
+	if cfg.MaxRetries > 0 {
+		opts = append(opts, option.WithMaxRetries(cfg.MaxRetries))
+	}
+	if cfg.RequestTimeout > 0 {
+		opts = append(opts, option.WithRequestTimeout(cfg.RequestTimeout))
 	}
 	return &Anthropic{client: anthropic.NewClient(opts...)}
 }

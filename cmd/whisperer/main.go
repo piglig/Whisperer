@@ -60,6 +60,9 @@ func main() {
 	embedderModel := flag.String("embedder-model", "", "embedder model id (provider-specific; defaults supplied for openai/cohere)")
 	embedderKey := flag.String("embedder-key", "", "embedder API key (overrides EMBEDDER_API_KEY)")
 	embedderBaseURL := flag.String("embedder-base-url", "", "embedder base URL (required for openai-compat; optional for ollama)")
+	llmMaxRetries := flag.Int("llm-max-retries", 3, "max retries on transient LLM failures (0 = SDK default)")
+	llmTimeout := flag.Duration("llm-timeout", 120*time.Second, "per-LLM-call hard timeout (0 = no timeout)")
+	traceDir := flag.String("trace-dir", "runs", "directory to append per-turn JSONL traces; '-' to disable")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -135,7 +138,7 @@ func main() {
 	}
 	_ = chosenVariant
 
-	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey)
+	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
 		modelGM = anthropic.Model(*modelOverride)
 	}
@@ -157,6 +160,7 @@ func main() {
 		VariantID:     chosenVariant,
 		Meta:          meta,
 		MetaPath:      resolvedMetaPath,
+		TraceDir:      *traceDir,
 	})
 	if err != nil {
 		fail("build orchestrator", err)
@@ -210,19 +214,23 @@ func normalizedProvider(p string) string {
 }
 
 // buildLLM 根据 provider 构造 Anthropic 客户端 + 选择模型常量。
-func buildLLM(provider, key string) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
+func buildLLM(provider, key string, maxRetries int, timeout time.Duration) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
 	switch normalizedProvider(provider) {
 	case providerOpenRouter:
 		return agent.NewAnthropic(agent.ClientConfig{
-				AuthToken: key,
-				BaseURL:   agent.OpenRouterBaseURL,
+				AuthToken:      key,
+				BaseURL:        agent.OpenRouterBaseURL,
+				MaxRetries:     maxRetries,
+				RequestTimeout: timeout,
 			}),
 			agent.OpenRouterModelGM,
 			agent.OpenRouterModelHelper
 	default:
 		return agent.NewAnthropic(agent.ClientConfig{
-				APIKey:  key,
-				BaseURL: agent.AnthropicBaseURL, // 显式指定，避免 SDK 读取用户环境里的 ANTHROPIC_BASE_URL
+				APIKey:         key,
+				BaseURL:        agent.AnthropicBaseURL, // 显式指定，避免 SDK 读取用户环境里的 ANTHROPIC_BASE_URL
+				MaxRetries:     maxRetries,
+				RequestTimeout: timeout,
 			}),
 			agent.ModelGM, agent.ModelHelper
 	}
