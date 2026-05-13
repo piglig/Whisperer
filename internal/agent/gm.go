@@ -28,20 +28,20 @@ type ToolHandler func(ctx context.Context, name string, inputRaw json.RawMessage
 
 // GMAgent 是封装好的 GM tool-use 主循环。
 type GMAgent struct {
-	llm           LLM
-	model         anthropic.Model
-	system        []anthropic.TextBlockParam
-	tools         []anthropic.ToolUnionParam
-	handler       ToolHandler
-	maxIter       int
-	maxTokens     int64
+	llm       LLM
+	model     anthropic.Model
+	system    []anthropic.TextBlockParam
+	tools     []anthropic.ToolUnionParam
+	handler   ToolHandler
+	maxIter   int
+	maxTokens int64
 }
 
 // Config 构造 GMAgent。零值字段会被填默认值。
 type Config struct {
 	LLM           LLM
 	Model         anthropic.Model
-	SystemPrompt  string                       // 普通字符串；内部包装为单个 TextBlockParam（带 cache_control）
+	SystemPrompt  string // 普通字符串；内部包装为单个 TextBlockParam（带 cache_control）
 	Tools         []anthropic.ToolUnionParam
 	Handler       ToolHandler
 	MaxIterations int

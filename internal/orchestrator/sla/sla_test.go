@@ -148,15 +148,15 @@ func TestSLA6_NegatedSuccessNotViolation(t *testing.T) {
 	fail := false
 	v := New(Snapshot{InvestigatorActive: true, InvestigatorHP: 10, InvestigatorSAN: 60})
 	cases := map[string]string{
-		"未能成功":      "你拼尽全力，但未能成功打开锁。",
-		"没能成功":      "她转身就走，你没能成功拦下她。",
-		"没击中":       "你瞄准对方下盘，没击中。",
-		"不会答应":      "她明显不会答应你的请求。",
-		"无法说服":      "你试了半天，但无法说服他开口。",
-		"未答应":       "她未答应任何要求。",
-		"远点的不":      "你不会成功的。", // "不" 距 "成功" 2 rune
-		"始终不答应":     "他始终不答应你的请求。",
-		"没有答应":      "她没有答应你。",
+		"未能成功":  "你拼尽全力，但未能成功打开锁。",
+		"没能成功":  "她转身就走，你没能成功拦下她。",
+		"没击中":   "你瞄准对方下盘，没击中。",
+		"不会答应":  "她明显不会答应你的请求。",
+		"无法说服":  "你试了半天，但无法说服他开口。",
+		"未答应":   "她未答应任何要求。",
+		"远点的不":  "你不会成功的。", // "不" 距 "成功" 2 rune
+		"始终不答应": "他始终不答应你的请求。",
+		"没有答应":  "她没有答应你。",
 	}
 	for name, narrative := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -177,10 +177,10 @@ func TestSLA6_UnnegatedSuccessIsViolation(t *testing.T) {
 	v := New(Snapshot{InvestigatorActive: true, InvestigatorHP: 10, InvestigatorSAN: 60})
 	// 真正违规：句中含未被否定的成功语义
 	cases := map[string]string{
-		"成功":         "你成功扭开了锁。",
-		"答应":         "她答应了。",
-		"信任你":        "她现在信任你了。",
-		"先否定后肯定":     "她先没答应，但很快就答应了。", // 第二次"答应"未被否定 → 违规
+		"成功":     "你成功扭开了锁。",
+		"答应":     "她答应了。",
+		"信任你":    "她现在信任你了。",
+		"先否定后肯定": "她先没答应，但很快就答应了。", // 第二次"答应"未被否定 → 违规
 	}
 	for name, narrative := range cases {
 		t.Run(name, func(t *testing.T) {

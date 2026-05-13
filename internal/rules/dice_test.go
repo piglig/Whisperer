@@ -13,9 +13,9 @@ func TestRoll_ValidExpressions(t *testing.T) {
 		name     string
 		expr     string
 		seed     uint64
-		wantTot  int    // 期望 Total（用 seededRand 锁定输出）
-		wantRoll []int  // 期望 Rolls
-		wantMod  int    // 期望 Modifier
+		wantTot  int   // 期望 Total（用 seededRand 锁定输出）
+		wantRoll []int // 期望 Rolls
+		wantMod  int   // 期望 Modifier
 	}{
 		{name: "constant", expr: "5", wantTot: 5, wantMod: 5},
 		{name: "1d6 seed=1", expr: "1d6", seed: 1},

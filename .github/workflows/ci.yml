@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          if ! git diff --quiet -- go.mod go.sum; then
+            echo "go.mod / go.sum is not tidy. Run 'go mod tidy' and commit." >&2
+            git diff -- go.mod go.sum
+            exit 1
+          fi
+
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Run tests with race detector
+        run: go test -race -covermode=atomic -coverprofile=cover.out ./internal/...
+
+      - name: Coverage threshold (≥ 85%)
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
+          threshold=85
+          awk -v t="$total" -v th="$threshold" 'BEGIN {
+            if (t+0 < th+0) {
+              printf "FAIL: coverage %s%% < threshold %s%%\n", t, th
+              exit 1
+            } else {
+              printf "OK: coverage %s%% (>= %s%%)\n", t, th
+            }
+          }'
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+          if-no-files-found: error
+          retention-days: 14
+
+  lint:
+    name: vet & lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m

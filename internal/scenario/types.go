@@ -192,15 +192,15 @@ type ActionUpdateNPCRelation struct {
 //
 // 玩家不可见 variant 选择——结局页才显示"本局真凶"。
 type Variant struct {
-	ID                     string                            `yaml:"id" json:"id"`
-	Weight                 int                               `yaml:"weight,omitempty" json:"weight,omitempty"`
-	Truth                  string                            `yaml:"truth,omitempty" json:"truth,omitempty"`
-	Culprit                string                            `yaml:"culprit,omitempty" json:"culprit,omitempty"`
-	NPCSecrets             map[string]string                 `yaml:"npc_secrets,omitempty" json:"npc_secrets,omitempty"`
-	NPCKnowledgeOverrides  map[string]map[string]NPCKnowledge `yaml:"npc_knowledge_overrides,omitempty" json:"npc_knowledge_overrides,omitempty"`
-	ClueOverrides          map[string]CluePatch              `yaml:"clue_overrides,omitempty" json:"clue_overrides,omitempty"`
-	TriggerOverrides       map[string]ConditionPatch         `yaml:"trigger_overrides,omitempty" json:"trigger_overrides,omitempty"`
-	EndingDescOverrides    map[string]string                 `yaml:"ending_desc_overrides,omitempty" json:"ending_desc_overrides,omitempty"`
+	ID                    string                             `yaml:"id" json:"id"`
+	Weight                int                                `yaml:"weight,omitempty" json:"weight,omitempty"`
+	Truth                 string                             `yaml:"truth,omitempty" json:"truth,omitempty"`
+	Culprit               string                             `yaml:"culprit,omitempty" json:"culprit,omitempty"`
+	NPCSecrets            map[string]string                  `yaml:"npc_secrets,omitempty" json:"npc_secrets,omitempty"`
+	NPCKnowledgeOverrides map[string]map[string]NPCKnowledge `yaml:"npc_knowledge_overrides,omitempty" json:"npc_knowledge_overrides,omitempty"`
+	ClueOverrides         map[string]CluePatch               `yaml:"clue_overrides,omitempty" json:"clue_overrides,omitempty"`
+	TriggerOverrides      map[string]ConditionPatch          `yaml:"trigger_overrides,omitempty" json:"trigger_overrides,omitempty"`
+	EndingDescOverrides   map[string]string                  `yaml:"ending_desc_overrides,omitempty" json:"ending_desc_overrides,omitempty"`
 }
 
 // CluePatch 仅 patch 已声明 clue 的描述/位置/来源/SAN 损失文本。

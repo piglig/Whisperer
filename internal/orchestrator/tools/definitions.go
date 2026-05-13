@@ -232,9 +232,9 @@ func allToolDefs() []anthropic.ToolParam {
 			Description: anthropic.String("Append an event to the log. Use type='narrative' for in-fiction notes, 'state_change' for material changes already applied via other tools."),
 			InputSchema: anthropic.ToolInputSchemaParam{
 				Properties: map[string]any{
-					"type":              obj("string", "Event type, e.g. 'narrative', 'state_change'."),
-					"description":       obj("string", "Short summary, ≤ 200 chars."),
-					"related_entities":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional list of entity ids referenced."},
+					"type":             obj("string", "Event type, e.g. 'narrative', 'state_change'."),
+					"description":      obj("string", "Short summary, ≤ 200 chars."),
+					"related_entities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional list of entity ids referenced."},
 				},
 				Required: []string{"type", "description"},
 			},

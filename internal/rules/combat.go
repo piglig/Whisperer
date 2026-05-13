@@ -63,7 +63,7 @@ func Attack(attacker, defender Combatant, rng *rand.Rand) (SkillCheckResult, *Da
 
 	dmg, err := Roll(attacker.WeaponDamage, rng)
 	if err != nil {
-		return check, nil, fmt.Errorf("%w: %v", ErrCombatInvalidWeapon, err)
+		return check, nil, fmt.Errorf("%w: %w", ErrCombatInvalidWeapon, err)
 	}
 
 	if attacker.Impaling &&

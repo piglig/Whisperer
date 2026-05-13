@@ -36,10 +36,10 @@ const (
 
 // Detector 评估玩家是否偏离主线。
 type Detector struct {
-	scenario     *Scenario
-	repo         *store.Repository
-	softThresh   int
-	hardThresh   int
+	scenario   *Scenario
+	repo       *store.Repository
+	softThresh int
+	hardThresh int
 }
 
 // NewDetector 构造 detector。

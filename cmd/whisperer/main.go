@@ -255,9 +255,9 @@ func ensureSaveWithVariant(
 	if err := repo.UpsertInvestigator(ctx, store.Investigator{
 		ID: uuid.NewString(), SaveID: id,
 		Name: "未命名调查员", Occupation: "记者",
-		AttrsJSON:     `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
-		SkillsJSON:    `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
-		HP:            12, MP: 12, SAN: 60,
+		AttrsJSON:  `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
+		SkillsJSON: `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
+		HP:         12, MP: 12, SAN: 60,
 		InventoryJSON: `["笔记本","钢笔"]`,
 		Active:        true,
 	}); err != nil {

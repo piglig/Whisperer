@@ -206,12 +206,12 @@ func (e *Engine) CheckEndings(ctx context.Context, saveID string) (*Ending, erro
 
 // stateView 是触发器条件求值时使用的"快照"。
 type stateView struct {
-	Save           store.Save
-	VisitedLocs    map[string]bool
-	FoundClues     map[string]bool
-	DeadNPCs       map[string]bool
-	NPCRelations   map[string]int
-	Fired          map[string]bool
+	Save         store.Save
+	VisitedLocs  map[string]bool
+	FoundClues   map[string]bool
+	DeadNPCs     map[string]bool
+	NPCRelations map[string]int
+	Fired        map[string]bool
 }
 
 func (e *Engine) firedSet(ctx context.Context, saveID string) (map[string]bool, error) {

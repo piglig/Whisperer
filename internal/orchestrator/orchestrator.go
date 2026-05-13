@@ -39,8 +39,8 @@ type Config struct {
 	MaxSLARetries int
 
 	// 模型可显式指定；空时用 agent.ModelGM / agent.ModelHelper。
-	ModelGM    anthropic.Model
-	ModelNPC   anthropic.Model
+	ModelGM  anthropic.Model
+	ModelNPC anthropic.Model
 
 	// Judge 是可选的 LLM-as-judge 实现，启用后会在结构化 SLA 之外做语义校验
 	// （SLA #3 NPC 一致性 / #7 角色知识闭环）。每回合最多增加两次 Haiku 调用。

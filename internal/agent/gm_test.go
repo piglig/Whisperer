@@ -15,7 +15,7 @@ import (
 type fakeLLM struct {
 	scripts []string // 每个 string 是一段完整的 *anthropic.Message JSON
 	calls   int
-	failOn  int    // 第几次调用返回 error；0 表示不失败
+	failOn  int // 第几次调用返回 error；0 表示不失败
 	failErr error
 }
 

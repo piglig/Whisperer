@@ -169,9 +169,9 @@ func handleTransitionLocation(ctx context.Context, d *Dispatcher, raw json.RawMe
 }
 
 type addEventIn struct {
-	Type             string   `json:"type"`
-	Description      string   `json:"description"`
-	RelatedEntities  []string `json:"related_entities"`
+	Type            string   `json:"type"`
+	Description     string   `json:"description"`
+	RelatedEntities []string `json:"related_entities"`
 }
 
 func handleAddEvent(ctx context.Context, d *Dispatcher, raw json.RawMessage) (any, bool) {

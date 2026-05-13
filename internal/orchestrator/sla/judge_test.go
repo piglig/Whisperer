@@ -15,18 +15,18 @@ import (
 
 // fakeJudge 让我们对 CheckWithJudge 的派发逻辑做断言，不依赖真实 LLM。
 type fakeJudge struct {
-	npcReturn   *Violation
-	npcErr      error
-	knowReturn  *Violation
-	knowErr     error
-	failReturn  *Violation
-	failErr     error
-	npcCalls    int
-	knowCalls   int
-	failCalls   int
-	lastNPCIn   JudgeNPCInput
-	lastKnowIn  JudgeKnowledgeInput
-	lastFailIn  JudgeFailureInput
+	npcReturn  *Violation
+	npcErr     error
+	knowReturn *Violation
+	knowErr    error
+	failReturn *Violation
+	failErr    error
+	npcCalls   int
+	knowCalls  int
+	failCalls  int
+	lastNPCIn  JudgeNPCInput
+	lastKnowIn JudgeKnowledgeInput
+	lastFailIn JudgeFailureInput
 }
 
 func (f *fakeJudge) JudgeNPCConsistency(_ context.Context, in JudgeNPCInput) (*Violation, error) {

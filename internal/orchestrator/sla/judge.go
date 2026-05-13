@@ -34,10 +34,10 @@ type JudgeFailureInput struct {
 
 // JudgeNPCInput 是 #3 校验的输入。
 type JudgeNPCInput struct {
-	NPCID         string
-	Persona       string
-	RecentLines   []string
-	CurrentLine   string
+	NPCID       string
+	Persona     string
+	RecentLines []string
+	CurrentLine string
 }
 
 // JudgeKnowledgeInput 是 #7 校验的输入。
@@ -49,8 +49,8 @@ type JudgeKnowledgeInput struct {
 
 // CodeNPCInconsistent / CodeKnowledgeOverreach 是 LLM-judge 专属的违规码。
 const (
-	CodeNPCInconsistent     Code = "npc_inconsistent"
-	CodeKnowledgeOverreach  Code = "knowledge_overreach"
+	CodeNPCInconsistent    Code = "npc_inconsistent"
+	CodeKnowledgeOverreach Code = "knowledge_overreach"
 )
 
 // CheckWithJudge 在结构化 Check 之上叠加 LLM 语义判定。
@@ -59,7 +59,7 @@ const (
 //  1. 先跑 Check（L1 字符级 4 条结构化 + #8 EndingForced）。
 //  2. 若 Judge != nil：
 //     a. #6 假阳过滤：L1 把 narrative 判为 "含未被否定的成功词"，调 Judge 二判；
-//        若 Judge 判定 narrative 实际表达的是失败 / 否定 / 中性，移除 L1 的违规。
+//     若 Judge 判定 narrative 实际表达的是失败 / 否定 / 中性，移除 L1 的违规。
 //     b. #3 NPC 一致性：trace 含 npc_speak 时按 NPC 调一次。
 //     c. #7 角色知识投射：narrative 含 "你想起 / 你认出" 时调一次。
 //  3. 重新计算 Passed。
@@ -257,6 +257,7 @@ func (j *HaikuJudge) askJudge(ctx context.Context, userPrompt string) (bool, str
 	raw := strings.TrimSpace(text.String())
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		// LLM 输出不规范 → 视为通过，避免误伤；记录在 reason 中以便上层日志。
+		//nolint:nilerr // fail-open by design: judge unparseable should not block the turn
 		return false, "judge output unparseable", nil
 	}
 	return parsed.Violation, parsed.Reason, nil

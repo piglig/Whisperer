@@ -34,11 +34,4 @@ var (
 			Bold(true).
 			Border(lipgloss.RoundedBorder()).
 			Padding(0, 1)
-
-	driftSoftStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#fab387"))
-
-	driftHardStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f38ba8")).
-			Bold(true)
 )

@@ -90,11 +90,11 @@ func New(ctx context.Context, runner Runner, st *store.Store, openingNarrative s
 	sp.Spinner = spinner.Dot
 
 	m := Model{
-		runner: runner,
-		store:  st,
-		input:  in,
+		runner:  runner,
+		store:   st,
+		input:   in,
 		spinner: sp,
-		ctx:    ctx,
+		ctx:     ctx,
 	}
 	if openingNarrative != "" {
 		m.log = append(m.log, logEntry{kind: EntryGM, text: openingNarrative})
@@ -389,12 +389,12 @@ func (m Model) handleBind(c command) (Model, tea.Cmd) {
 		occupation = strings.TrimSpace(parts[1])
 	}
 	inv := store.Investigator{
-		ID:            "inv-" + name,
-		Name:          name,
-		Occupation:    occupation,
-		AttrsJSON:     `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
-		SkillsJSON:    `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
-		HP:            12, MP: 12, SAN: 60,
+		ID:         "inv-" + name,
+		Name:       name,
+		Occupation: occupation,
+		AttrsJSON:  `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
+		SkillsJSON: `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
+		HP:         12, MP: 12, SAN: 60,
 		InventoryJSON: `[]`,
 	}
 	ctx := m.ctx

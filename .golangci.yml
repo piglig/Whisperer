@@ -1,21 +1,69 @@
+version: "2"
+
 run:
-  timeout: 3m
+  timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
-    - gofmt
-    - revive
-    - misspell
+    - errcheck      # 未处理的错误
+    - govet         # 标准 vet
+    - ineffassign   # 无效赋值
+    - staticcheck   # SA 系列
+    - unused        # 死代码
+    - revive        # golint 替代
+    - misspell      # 拼写
+    - gocritic      # 风格 / 小坑
+    - bodyclose     # http body 未 Close
+    - errorlint     # %w / errors.Is / errors.As 配套
+    - nilerr        # if err != nil { return nil } 反模式
+    - nolintlint    # //nolint 指令本身合法
 
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
+  settings:
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: redefines-builtin-id
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+    misspell:
+      locale: US
+      ignore-rules:
+        - dialogue   # 工具/JSON 契约字段名，不改
+        - dialogues
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - errorlint
+          - revive   # 测试 helper 允许 (t, ctx, ...) 参数顺序
+      # defer X.Close() 的错误约定上忽略
+      - source: 'defer .*\.Close\(\)$'
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

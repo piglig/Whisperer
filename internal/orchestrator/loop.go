@@ -16,13 +16,13 @@ import (
 
 // TurnResult 是 RunTurn 的结构化输出。TUI / CLI 据此渲染。
 type TurnResult struct {
-	Narrative   string                  `json:"narrative"`
-	Trace       agent.TurnTrace         `json:"trace"`
-	Fired       []scenario.FiredTrigger `json:"fired,omitempty"`
-	Drift       scenario.DriftStatus    `json:"drift"`
-	Ending      *scenario.Ending        `json:"ending,omitempty"`
-	SLAReport   sla.Report              `json:"sla_report"`
-	Save        store.Save              `json:"save"`
+	Narrative string                  `json:"narrative"`
+	Trace     agent.TurnTrace         `json:"trace"`
+	Fired     []scenario.FiredTrigger `json:"fired,omitempty"`
+	Drift     scenario.DriftStatus    `json:"drift"`
+	Ending    *scenario.Ending        `json:"ending,omitempty"`
+	SLAReport sla.Report              `json:"sla_report"`
+	Save      store.Save              `json:"save"`
 }
 
 // RunTurn 执行一次完整回合：管线见 specs/06-orchestrator-and-tui.md §RunTurn。
@@ -42,13 +42,13 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 	turnNumber := preSave.TurnCount + 1
 
 	var (
-		trace       agent.TurnTrace
-		newHistory  []anthropic.MessageParam
-		report      sla.Report
-		firedList   []scenario.FiredTrigger
-		drift       scenario.DriftStatus
-		ending      *scenario.Ending
-		finalSave   store.Save
+		trace      agent.TurnTrace
+		newHistory []anthropic.MessageParam
+		report     sla.Report
+		firedList  []scenario.FiredTrigger
+		drift      scenario.DriftStatus
+		ending     *scenario.Ending
+		finalSave  store.Save
 	)
 
 	txErr := o.cfg.Store.RunTurn(ctx, func(ctx context.Context, repo *store.Repository) error {
