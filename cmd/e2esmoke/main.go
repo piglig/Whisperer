@@ -37,6 +37,8 @@ func main() {
 	modelOverride := flag.String("model", "", "override GM model id")
 	modelHelperOverride := flag.String("model-helper", "", "override Haiku/helper model id")
 	stopOnEnding := flag.Bool("stop-on-ending", true, "halt as soon as the scenario ending is reached")
+	variantID := flag.String("variant", "", "force a specific variant id; empty for weighted random")
+	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
 	flag.Parse()
 
 	key := *apiKey
@@ -58,12 +60,29 @@ func main() {
 	must("open memory", err)
 	defer mem.Close()
 
-	scn, err := scenario.LoadBundled(*scenarioID)
+	baseScn, err := scenario.LoadBundled(*scenarioID)
 	must("load scenario", err)
+
+	var scn *scenario.Scenario
+	var chosenVariant string
+	if *variantID != "" {
+		scn, chosenVariant, err = scenario.SelectVariantByID(baseScn, *variantID)
+	} else {
+		s := *seed
+		if s == 0 {
+			s = time.Now().UnixNano()
+		}
+		rng := rand.New(rand.NewPCG(uint64(s), 0xfeed))
+		scn, chosenVariant, err = scenario.SelectVariant(baseScn, rng)
+	}
+	must("select variant", err)
+	if chosenVariant != "" {
+		fmt.Fprintf(os.Stderr, "[e2esmoke] variant=%s\n", chosenVariant)
+	}
 
 	saveID := uuid.NewString()
 	must("create save", st.Repo().CreateSave(ctx, store.Save{
-		ID: saveID, Name: "e2e", ScenarioID: scn.ID,
+		ID: saveID, Name: "e2e", ScenarioID: baseScn.ID, VariantID: chosenVariant,
 	}))
 	must("create investigator", st.Repo().UpsertInvestigator(ctx, store.Investigator{
 		ID: uuid.NewString(), SaveID: saveID,
@@ -86,15 +105,16 @@ func main() {
 	}
 
 	orch, err := orchestrator.New(orchestrator.Config{
-		Store:    st,
-		Memory:   mem,
-		Scenario: scn,
-		LLMGM:    llm,
-		LLMNPC:   llm,
-		ModelGM:  modelGM,
-		ModelNPC: modelNPC,
-		SaveID:   saveID,
-		RNG:      rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
+		Store:     st,
+		Memory:    mem,
+		Scenario:  scn,
+		LLMGM:     llm,
+		LLMNPC:    llm,
+		ModelGM:   modelGM,
+		ModelNPC:  modelNPC,
+		SaveID:    saveID,
+		RNG:       rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
+		VariantID: chosenVariant,
 	})
 	must("build orchestrator", err)
 

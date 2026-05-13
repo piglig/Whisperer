@@ -154,17 +154,41 @@ orchestrator 在回合结束后调 `Tick`，`DriftSoft` → 注入 prompt 提示
 
 scenario `start.time_of_day` 在 Apply 时落到 saves。
 
-## fog_harbor 骨架
+## fog_harbor v0.3.1（可玩剧本，含三 variant）
 
-`internal/scenario/data/fog_harbor.yaml`，自有复述：
-- 4 地点：码头、酒馆、灯塔、巡警所
-- 5 NPC：范斯医生（嫌疑人）、酒馆老板娘、失踪者母亲、灯塔守、巡警长官
-- 3 关键线索：沾血便条、潮汐表、酒馆账册
-- 1 普通物品：黄铜油灯
-- 2 触发器：灯塔异响、酒馆夜访
-- 1 成功结局 + 2 失败结局（救援失败 / 调查员被解雇）
+`internal/scenario/data/fog_harbor.yaml`，2026-05 升至 v0.3.1（v0.3.0 → v0.3.1
+专业评审后重构：variant 改为角色站位轮换 + Three Clue Rule 冗余线索 + Anna 受害者面孔）：
+- 6 地点：码头、酒馆、灯塔、巡警所、教堂、露西房间、礁洞（subloc）
+- 9 NPC：范斯、玛丽莎、海莲娜、欧林、罗克、卡尔文神父、**安娜（下个候选祭品）**、露西、深潜者长老
+- 16 线索：4 Tier-1 表层 / 7 Tier-2 共谋 / 4 Tier-3 神话 / 1 red herring（Three Clue Rule 冗余分布）
+- 12 触发器：含 2 个时间压力（helena_despairs / rourke_warns）+ Anna 时间炸弹（anna_taken）
+- 5 结局：solved / pact_broken / flee_with_truth / victim_dies（含 Anna 死）/ dismissed
+- 3 variants（角色站位轮换）：vance_executes / calvin_directs / rourke_runs，每局加权随机选一个
 
-只放骨架，所有描述短句不超过 1-2 行；prompt 调度时由 GM 拓展。
+详细设定见 [specs/08-fog-harbor-canon.md](08-fog-harbor-canon.md)。
+
+### 新增可选 schema 字段（v0.3.0）
+
+| 字段 | 位置 | 用途 |
+|---|---|---|
+| `truth` | Scenario 顶层 | GM-only 真相，注入 `gm_system.tmpl` 不渲染给玩家 |
+| `secret` | SNPC | 该 NPC 的隐藏动机；GM 全见，对应 NPC 子代理可见，其他 NPC 不见 |
+| `knowledge.requires_phrases` | SNPC.Knowledge | 玩家必须命中关键词，NPC 才"松口"（NPC 子代理自判，引擎不做匹配） |
+| `tier` / `location` / `source` / `san_loss` | SClue | tier 1-3 主线 / 0 红鲱；location/source 让 GM 知道线索藏哪 |
+| `variants` | Scenario 顶层 | 见下 |
+
+### Variant 系统
+
+`Variant` 描述对 base scenario 的 patch（不允许新增 npc/clue/trigger/ending id，避免破坏校验）：
+- `truth` / `npc_secrets` / `npc_knowledge_overrides` / `clue_overrides` / `trigger_overrides` / `ending_desc_overrides`
+- `engine.SelectVariant(base, *rand.Rand)` 加权随机选一个；`SelectVariantByID` 用于 CLI `--variant` 强制
+- `MergeVariant` 是纯函数，返回新 *Scenario（base 不变）
+- store `saves.variant_id` 列持久化本局选择，reload 时按该 id 重新 merge 保持一致性
+
+### 跨周目 meta
+
+`runs/meta.json`（gitignored）记录玩家累计 play_count + 已通关 variants/endings + 已揭开真相。
+GM prompt 在新一局注入"玩家先验"段，允许 NPC 出现"似曾相识"的暗示但**不可剧透**。
 
 ## 测试
 

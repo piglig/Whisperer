@@ -17,6 +17,7 @@ import (
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
@@ -33,6 +34,7 @@ type Dispatcher struct {
 	now      func() int64
 	memory   *memory.Memory
 	npcAgent *agent.NPCAgent
+	scenario *scenario.Scenario
 }
 
 // New 构造一个 Dispatcher（不带 memory / NPC agent）。
@@ -58,6 +60,14 @@ func (d *Dispatcher) WithMemory(m *memory.Memory) *Dispatcher {
 // WithNPCAgent 注入 NPC 子代理。
 func (d *Dispatcher) WithNPCAgent(a *agent.NPCAgent) *Dispatcher {
 	d.npcAgent = a
+	return d
+}
+
+// WithScenario 注入 effective scenario（含 variant patch）。npc_speak handler 用它读取
+// NPC 的 secret 与 knowledge map 以注入 NPC 子代理 system prompt。可空——空时 NPC
+// 不会得到 GM-only 的隐藏信息。
+func (d *Dispatcher) WithScenario(s *scenario.Scenario) *Dispatcher {
+	d.scenario = s
 	return d
 }
 

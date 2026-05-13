@@ -3,10 +3,14 @@ package scenario
 import (
 	"embed"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// sanLossPattern 校验形如 "0/1"、"1/1d4"、"1d3/1d10" 的克苏鲁 SAN 损失字符串。
+var sanLossPattern = regexp.MustCompile(`^(\d+|\d*d\d+)/(\d+|\d*d\d+)$`)
 
 //go:embed data/*.yaml
 var bundled embed.FS
@@ -103,6 +107,25 @@ func Validate(s *Scenario) error {
 		if n.Location != "" && !locSet[n.Location] {
 			return fmt.Errorf("scenario: npc %s references unknown location %q", n.ID, n.Location)
 		}
+		for k, kn := range n.Knowledge {
+			if strings.TrimSpace(kn.Reveal) == "" {
+				return fmt.Errorf("scenario: npc %s knowledge %q: empty reveal", n.ID, k)
+			}
+			if kn.SanLoss != "" && !sanLossPattern.MatchString(kn.SanLoss) {
+				return fmt.Errorf("scenario: npc %s knowledge %q: invalid san_loss %q", n.ID, k, kn.SanLoss)
+			}
+		}
+	}
+	for _, c := range s.Clues {
+		if c.Location != "" && !locSet[c.Location] {
+			return fmt.Errorf("scenario: clue %s references unknown location %q", c.ID, c.Location)
+		}
+		if c.Source != "" && !npcSet[c.Source] {
+			return fmt.Errorf("scenario: clue %s references unknown source npc %q", c.ID, c.Source)
+		}
+		if c.SanLoss != "" && !sanLossPattern.MatchString(c.SanLoss) {
+			return fmt.Errorf("scenario: clue %s: invalid san_loss %q", c.ID, c.SanLoss)
+		}
 	}
 	for _, it := range s.Items {
 		switch it.OwnerType {
@@ -148,8 +171,82 @@ func Validate(s *Scenario) error {
 			return fmt.Errorf("ending %s: %w", e.ID, err)
 		}
 	}
+	if err := validateVariants(s, locSet, npcSet, clueSet, idsOfTriggersSet(s.Triggers), idsOfEndingsSet(s.Endings)); err != nil {
+		return err
+	}
 	return nil
 }
+
+func validateVariants(s *Scenario, locs, npcs, clues, triggers, endings map[string]bool) error {
+	if len(s.Variants) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, v := range s.Variants {
+		if v.ID == "" {
+			return fmt.Errorf("variant: empty id")
+		}
+		if seen[v.ID] {
+			return fmt.Errorf("variant: duplicate id %q", v.ID)
+		}
+		seen[v.ID] = true
+		if v.Weight < 0 {
+			return fmt.Errorf("variant %s: weight must be >= 0", v.ID)
+		}
+		if v.Culprit != "" && !npcs[v.Culprit] {
+			return fmt.Errorf("variant %s: culprit references unknown npc %q", v.ID, v.Culprit)
+		}
+		for npcID := range v.NPCSecrets {
+			if !npcs[npcID] {
+				return fmt.Errorf("variant %s: npc_secrets references unknown npc %q", v.ID, npcID)
+			}
+		}
+		for npcID, kmap := range v.NPCKnowledgeOverrides {
+			if !npcs[npcID] {
+				return fmt.Errorf("variant %s: npc_knowledge_overrides references unknown npc %q", v.ID, npcID)
+			}
+			for k, kn := range kmap {
+				if strings.TrimSpace(kn.Reveal) == "" {
+					return fmt.Errorf("variant %s: npc %s knowledge %q: empty reveal", v.ID, npcID, k)
+				}
+				if kn.SanLoss != "" && !sanLossPattern.MatchString(kn.SanLoss) {
+					return fmt.Errorf("variant %s: npc %s knowledge %q: invalid san_loss %q", v.ID, npcID, k, kn.SanLoss)
+				}
+			}
+		}
+		for clueID, patch := range v.ClueOverrides {
+			if !clues[clueID] {
+				return fmt.Errorf("variant %s: clue_overrides references unknown clue %q", v.ID, clueID)
+			}
+			if patch.Location != "" && !locs[patch.Location] {
+				return fmt.Errorf("variant %s: clue %s patch references unknown location %q", v.ID, clueID, patch.Location)
+			}
+			if patch.Source != "" && !npcs[patch.Source] {
+				return fmt.Errorf("variant %s: clue %s patch references unknown source npc %q", v.ID, clueID, patch.Source)
+			}
+			if patch.SanLoss != "" && !sanLossPattern.MatchString(patch.SanLoss) {
+				return fmt.Errorf("variant %s: clue %s patch: invalid san_loss %q", v.ID, clueID, patch.SanLoss)
+			}
+		}
+		for triggerID, patch := range v.TriggerOverrides {
+			if !triggers[triggerID] {
+				return fmt.Errorf("variant %s: trigger_overrides references unknown trigger %q", v.ID, triggerID)
+			}
+			cond := patch.When
+			if err := validateCondition(&cond, locs, npcs, clues, triggers); err != nil {
+				return fmt.Errorf("variant %s: trigger %s: %w", v.ID, triggerID, err)
+			}
+		}
+		for endingID := range v.EndingDescOverrides {
+			if !endings[endingID] {
+				return fmt.Errorf("variant %s: ending_desc_overrides references unknown ending %q", v.ID, endingID)
+			}
+		}
+	}
+	return nil
+}
+
+func idsOfEndingsSet(xs []Ending) map[string]bool { return setOf(idsOfEndings(xs)) }
 
 func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool) error {
 	if c == nil {

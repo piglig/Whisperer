@@ -32,6 +32,47 @@ When the investigator possesses a relevant skill at sufficient value (≥ 1 succ
 {{ .ScenarioContext }}
 {{- end }}
 
+{{- if .Truth }}
+
+# 剧本真相（仅 GM 可见 — 严禁在叙事中直接复述）
+
+本局的真相如下。你的任务是依据这份真相决定 NPC 反应、场景细节与可发现的证据，但**绝不**让任何叙述、对话或 tool 调用直接告诉玩家这些字眼。玩家只能通过自己拼接线索抵达真相。
+
+{{ .Truth }}
+{{- end }}
+
+{{- if .NPCSecrets }}
+
+# NPC 秘密（GM-only）
+
+每位 NPC 的隐藏动机/隐瞒。NPC 在叙事中只在关系阈值或证据触发后才会暴露这些；GM 不可让 NPC 在没被推到阈值时主动松口。
+
+{{ .NPCSecrets }}
+{{- end }}
+
+{{- if .NPCKnowledge }}
+
+# NPC 隐藏知识（关键词解锁）
+
+下列每条知识只有当玩家在输入中使用了 `requires_phrases` 中的某个关键词（或近义/隐喻形式），对应 NPC 才能透露。GM 把这条规则透传给 npc_speak 子代理，由它判断玩家本回合输入是否击中。
+
+{{ .NPCKnowledge }}
+{{- end }}
+
+{{- if .ClueAtlas }}
+
+# 线索三层网（GM-only）
+
+{{ .ClueAtlas }}
+{{- end }}
+
+{{- if .PlayerPrior }}
+
+# 玩家先验（跨周目 meta — 仅 GM 可见）
+
+{{ .PlayerPrior }}
+{{- end }}
+
 {{- if .InvestigatorBrief }}
 
 # Investigator brief

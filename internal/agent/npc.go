@@ -19,6 +19,8 @@ var npcSystemTmpl string
 // 缺省时至少应有一个，否则 NPC 没有可回应的对象）。
 type NPCSpeakRequest struct {
 	Persona       string // NPC 人格档案
+	Secret        string // 本 NPC 的隐藏动机 / 私下立场，仅本子代理可见
+	Knowledge     string // 关键词解锁的隐藏知识表（NPC 自行判断玩家本回合输入是否击中）
 	RecentHistory string // memory 检索得到的近期事件摘要
 	Intent        string // GM 给出的本次台词意图（如 "回应玩家关于黑暗仪式的询问，态度警惕"）
 	PlayerLine    string // 玩家本次说的话；可空

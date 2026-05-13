@@ -19,6 +19,16 @@ type PromptContext struct {
 	// AvailableIDs 列出本剧本所有可被 tool 引用的实体 ID（locations / npcs / clues / items）。
 	// 用于阻止 GM 自创不存在的 id（例如把 "harbor" 写成 "fog_harbor_docks"）。
 	AvailableIDs string
+	// Truth 是 GM-only 的本局真相（variant 决定）。模板会在专属段落中渲染并明确"不可剧透"。
+	Truth string
+	// NPCSecrets 是每位 NPC 在本局的隐藏动机表。GM 不可主动复述，但可影响 NPC 反应与场景描写。
+	NPCSecrets string
+	// NPCKnowledge 是每位 NPC 的关键词解锁知识表（玩家用相关词触碰时才"松口"）。
+	NPCKnowledge string
+	// ClueAtlas 是 tier 分级的线索网，让 GM 知道现在玩家在哪一层。
+	ClueAtlas string
+	// PlayerPrior 是跨周目 meta 渲染——玩家"已活过几次"、看过哪些 variant。GM 可用于"似曾相识"暗示。
+	PlayerPrior string
 }
 
 // RenderGMSystem 把 PromptContext 渲染为完整 system prompt 字符串。

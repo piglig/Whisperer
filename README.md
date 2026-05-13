@@ -103,9 +103,31 @@ OpenRouter 模式下，模型名会自动加 `anthropic/` 前缀（如 `anthropi
 | `/help` | 帮助 |
 | `/quit` (`/exit` / `/q`) | 退出 |
 
+## 重开性（v0.3.0 新）
+
+雾港疑案不是一份静态 YAML——它是 **base + 3 variants + 跨周目 meta** 的组合。每局开始
+随机选一个 variant 决定真凶/共谋/线索分布；玩家通关后下一局，NPC 会出现"似曾相识"
+的暗示（不剧透）。三层重开性叠加：
+
+| 维度 | 数量 | 贡献 |
+|---|---|---|
+| variant（角色站位轮换） | 3 | vance_executes / calvin_directs / rourke_runs |
+| 结局分支 | 5 | solved / pact_broken / flee_with_truth / victim_dies / dismissed |
+| 关键词解锁的 NPC 隐藏知识 | 8 NPC × ~3 entries | 玩家用语言探索 |
+| 跨周目 meta 暗示 | runs/meta.json | NPC 第 2/3 局对玩家"似曾相识" |
+
+保守估 **10–15 局新鲜感**。
+
+CLI flags：
+- `--variant <id>` 强制指定 variant（默认按权重随机）
+- `--seed <n>` 指定随机种子，便于回放/确定性测试
+- `--meta <path>` 跨周目 meta 文件路径（默认 `runs/meta.json`，`-` 关闭）
+
+完整设定：[specs/08-fog-harbor-canon.md](specs/08-fog-harbor-canon.md)。
+
 ## 已实现（与需求文档 §3 Goals 对齐）
 
-- [x] **G1** 雾港疑案骨架剧本可端到端跑通（自有复述，规避版权）
+- [x] **G1** 雾港疑案 v0.3.1 完整剧本（自有原创；6 地点 / 9 NPC / 16 线索 / 12 触发器 / 5 结局 / 3 variants；Three Clue Rule + Anna 受害者面孔 + 角色站位 variant）
 - [x] **G2** 骰子 / 技能检定 / SAN / 战斗全部由代码裁决；LLM 通过 tool 调用，不允许私自宣判
 - [x] **G3** NPC 子代理 + 向量记忆，跨回合保持人格（结构化 + 可选 LLM judge）
 - [x] **G4** 世界状态持久化（SQLite + tool-only 写入）

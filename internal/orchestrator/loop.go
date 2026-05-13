@@ -59,6 +59,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		if o.cfg.LLMNPC != nil {
 			dispatcher.WithNPCAgent(agent.NewNPC(o.cfg.LLMNPC, o.cfg.ModelNPC))
 		}
+		dispatcher.WithScenario(o.cfg.Scenario)
 
 		gm, err := agent.New(agent.Config{
 			LLM:          o.cfg.LLMGM,

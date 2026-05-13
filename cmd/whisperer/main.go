@@ -49,6 +49,9 @@ func main() {
 	modelOverride := flag.String("model", "", "override GM model id (full vendor/model on OpenRouter)")
 	modelHelperOverride := flag.String("model-helper", "", "override Haiku/helper model id")
 	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
+	variantID := flag.String("variant", "", "force a specific variant id (default: weighted random)")
+	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
+	metaPath := flag.String("meta", "runs/meta.json", "cross-run meta file path; '-' to disable")
 	flag.Parse()
 
 	if *smoke {
@@ -78,15 +81,31 @@ func main() {
 	}
 	defer mem.Close()
 
-	scn, err := scenario.LoadBundled(*scenarioID)
+	baseScn, err := scenario.LoadBundled(*scenarioID)
 	if err != nil {
 		fail("load scenario", err)
 	}
 
-	currentSaveID, opening, err := ensureSave(ctx, st, scn, *saveID, mem)
+	// 跨周目 meta 加载（首次游玩或文件缺失返回空状态）。
+	var meta *scenario.MetaState
+	resolvedMetaPath := *metaPath
+	if resolvedMetaPath == "-" {
+		resolvedMetaPath = ""
+		meta = &scenario.MetaState{}
+	} else {
+		meta, err = scenario.LoadMeta(resolvedMetaPath)
+		if err != nil {
+			fail("load meta", err)
+		}
+	}
+
+	currentSaveID, scn, chosenVariant, opening, err := ensureSaveWithVariant(
+		ctx, st, baseScn, *saveID, *variantID, *seed, mem,
+	)
 	if err != nil {
 		fail("ensure save", err)
 	}
+	_ = chosenVariant
 
 	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey)
 	if *modelOverride != "" {
@@ -107,6 +126,9 @@ func main() {
 		SaveID:        currentSaveID,
 		RNG:           rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
 		AutosaveEvery: 3,
+		VariantID:     chosenVariant,
+		Meta:          meta,
+		MetaPath:      resolvedMetaPath,
 	})
 	if err != nil {
 		fail("build orchestrator", err)
@@ -178,20 +200,57 @@ func buildLLM(provider, key string) (*agent.Anthropic, anthropic.Model, anthropi
 	}
 }
 
-// ensureSave 若 saveID 为空则创建新 save + 默认调查员 + Apply 剧本，并返回开场白。
-func ensureSave(ctx context.Context, st *store.Store, scn *scenario.Scenario, saveID string, mem *memory.Memory) (string, string, error) {
+// ensureSaveWithVariant 若 saveID 为空则创建新 save + 选定 variant + Apply effective scenario；
+// 否则按存档中已记录的 variant_id 重新 merge effective scenario，保证读档的一致性。
+//
+// 参数：
+//   - forceVariant：CLI --variant 强制指定（空时随机）；新 save 模式才生效
+//   - seed：CLI --seed 控制确定性；0 取 unix nano
+//
+// 返回：saveID / effective scenario / 选中 variant id（可空）/ 开场白 / 错误。
+func ensureSaveWithVariant(
+	ctx context.Context,
+	st *store.Store,
+	base *scenario.Scenario,
+	saveID, forceVariant string,
+	seed int64,
+	mem *memory.Memory,
+) (string, *scenario.Scenario, string, string, error) {
 	repo := st.Repo()
 	if saveID != "" {
-		if _, err := repo.GetSave(ctx, saveID); err != nil {
-			return "", "", fmt.Errorf("save %q not found: %w", saveID, err)
+		sv, err := repo.GetSave(ctx, saveID)
+		if err != nil {
+			return "", nil, "", "", fmt.Errorf("save %q not found: %w", saveID, err)
 		}
-		return saveID, "", nil
+		eff, vid, err := scenario.SelectVariantByID(base, sv.VariantID)
+		if err != nil {
+			return "", nil, "", "", fmt.Errorf("re-select variant %q: %w", sv.VariantID, err)
+		}
+		return saveID, eff, vid, "", nil
 	}
 	id := uuid.NewString()
+
+	var eff *scenario.Scenario
+	var chosen string
+	var err error
+	if forceVariant != "" {
+		eff, chosen, err = scenario.SelectVariantByID(base, forceVariant)
+	} else {
+		s := seed
+		if s == 0 {
+			s = time.Now().UnixNano()
+		}
+		rng := rand.New(rand.NewPCG(uint64(s), 0xfeed))
+		eff, chosen, err = scenario.SelectVariant(base, rng)
+	}
+	if err != nil {
+		return "", nil, "", "", fmt.Errorf("select variant: %w", err)
+	}
+
 	if err := repo.CreateSave(ctx, store.Save{
-		ID: id, Name: "untitled", ScenarioID: scn.ID,
+		ID: id, Name: "untitled", ScenarioID: base.ID, VariantID: chosen,
 	}); err != nil {
-		return "", "", err
+		return "", nil, "", "", err
 	}
 	if err := repo.UpsertInvestigator(ctx, store.Investigator{
 		ID: uuid.NewString(), SaveID: id,
@@ -202,17 +261,21 @@ func ensureSave(ctx context.Context, st *store.Store, scn *scenario.Scenario, sa
 		InventoryJSON: `["笔记本","钢笔"]`,
 		Active:        true,
 	}); err != nil {
-		return "", "", err
+		return "", nil, "", "", err
 	}
-	engine := scenario.New(scn, repo, mem)
+	engine := scenario.New(eff, repo, mem)
 	if err := engine.Apply(ctx, id); err != nil {
-		return "", "", fmt.Errorf("scenario apply: %w", err)
+		return "", nil, "", "", fmt.Errorf("scenario apply: %w", err)
+	}
+	variantHint := ""
+	if chosen != "" {
+		variantHint = fmt.Sprintf("（variant: %s）", chosen)
 	}
 	opening := fmt.Sprintf(
-		"《%s》开场。剧本 id: %s。当前位置: %s。\n（输入 /help 查看命令；输入你想做的事开始游戏。）",
-		scn.Title, scn.ID, scn.Start.Location,
+		"《%s》开场%s。剧本 id: %s。当前位置: %s。\n（输入 /help 查看命令；输入你想做的事开始游戏。）",
+		base.Title, variantHint, base.ID, base.Start.Location,
 	)
-	return id, opening, nil
+	return id, eff, chosen, opening, nil
 }
 
 func fail(msg string, err error) {

@@ -39,6 +39,7 @@ type Save struct {
 	ID                string    `json:"id"`
 	Name              string    `json:"name"`
 	ScenarioID        string    `json:"scenario_id"`
+	VariantID         string    `json:"variant_id,omitempty"`
 	CurrentLocationID string    `json:"current_location_id,omitempty"`
 	TurnCount         int       `json:"turn_count"`
 	TimeOfDay         TimeOfDay `json:"time_of_day"`

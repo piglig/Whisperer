@@ -1,74 +1,299 @@
 id: fog_harbor
-title: 雾港疑案（骨架版）
-version: 0.1.0
+title: 雾港疑案
+version: 0.3.1
+
+# 剧本背景真相（GM-only；variant 会覆盖此默认）。
+# 默认 truth 对应 vance_pact 这一最常见 variant；其他 variant 会在 SelectVariant 时 patch。
+truth: |
+  雾港旧时是走私港，后转为合法渔港。三十年前一次海难后，灯塔守与镇上少数知情者
+  与栖息于灯塔下方礁洞里的"深潜者"群落达成隐秘契约：每隔数年由镇上"输送"一名
+  无人挂念的边缘人——孤女、流浪汉、负债的水手——作为活祭。换取的是小镇免受外
+  海风暴、瘟疫与外海未知存在的侵扰。
+
+  范斯医生是这一代的人类一方主谋——通过坐诊掌握镇上谁"无人挂念"。罗克长官受
+  贿默许；玛丽莎掌握范斯每次出诊的时间，被胁迫于沉默；欧林是被收买的眼线，但
+  动摇中。海莲娜的女儿露西是最近一名祭品。
+
+  灯塔基座下的礁洞在月圆暴风夜的低潮才完全露出；那时深潜者长老会现身唱诵。
+  第三幕的对决发生在此。
 
 locations:
   - id: harbor
     name: 雾港码头
-    description: 灰雾常年笼罩的木栈桥；潮水拍打着桩柱，气味混着海藻与机油。
-    connections: [pub, lighthouse, station]
+    description: 灰雾常年笼罩的木栈桥；潮水拍打着桩柱，气味混着海藻与机油。公告栏边角发黑、被钉满褪色海报。
+    connections: [pub, lighthouse, station, church]
+
   - id: pub
     name: 钨灯酒馆
-    description: 半地下的小酒馆，常客不多但总有人在角落低声交谈。
-    connections: [harbor, station]
+    description: 半地下的小酒馆，常客不多但总有人在角落低声交谈。柜台后挂着一本油迹斑斑的账册。
+    connections: [harbor, station, church]
+
   - id: lighthouse
     name: 北岬灯塔
-    description: 海风将塔身刻出深沟。守塔人独住此处，少与外界往来。
-    connections: [harbor]
+    description: 海风将塔身刻出深沟。守塔人独住此处，少与外界往来。塔基朝海一面有铁梯，雾里可见礁石轮廓。
+    connections: [harbor, reef_cave]
+
   - id: station
     name: 巡警所
-    description: 仅有两名警员当值的小型驻地。墙上挂着褪色的失踪者画像。
+    description: 仅有两名警员当值的小型驻地。墙上挂着褪色的失踪者画像。后院有一间小宿舍，海莲娜暂住于此。
+    connections: [harbor, pub, lucy_room]
+
+  - id: church
+    name: 圣安德鲁老教堂
+    description: 镇上最古老的建筑之一。彩窗上画的不是常见圣徒，而是难辨的鳞甲生物。地下保管着教区登记簿。
     connections: [harbor, pub]
+
+  - id: lucy_room
+    parent: station
+    name: 露西的房间
+    description: 海莲娜女儿失踪前的住处；床头柜上有一本日记的残页与一只半开的贝壳盒。
+    connections: [station]
+
+  - id: reef_cave
+    parent: lighthouse
+    name: 灯塔下礁洞
+    description: 仅在月圆暴风夜的低潮露出。岩壁刻满螺旋纹与不属于人类语系的符文；空气中有腥咸的低吼。
+    connections: [lighthouse]
 
 npcs:
   - id: vance
     name: 范斯医生
-    personality: 严肃寡言，眼神回避；说话短促，常用专业词汇绕开问题。
+    personality: 严肃寡言，眼神回避；说话短促，常用专业词汇绕开问题。坐诊时态度温和，被追问时改口冷漠。
+    secret: 你是镇上献祭契约的人类一方主谋。每隔数年挑选"无人挂念"的边缘人，用出诊作为掩护"安排"他们消失。露西是最近一名。你不残忍，是冷静——你认为这是小镇的代价。
     knowledge:
-      missing_person: knows_more_than_admits
+      sacrifice_history:
+        requires_phrases: ['献祭', '古约', '深潜者', '礁洞', '祭品']
+        reveal: '你不会承认，但会在这种词出现时停顿一拍——「这位记者，请你回酒馆。」'
+        san_loss: "0/1d3"
+      doctor_log:
+        requires_phrases: ['出诊记录', '病历', '处方']
+        reveal: '出诊记录在诊所，钥匙只在你这里。被追问时会说「病人隐私」。'
     relation_to_player: 0
     location: pub
+
   - id: marisa
     name: 玛丽莎（酒馆老板娘）
-    personality: 直率，不轻信外人，但在酒过三巡后会松口；记得每位常客。
+    personality: 直率，不轻信外人，但在酒过三巡后会松口；记得每位常客。眼神时常瞟向门口。
+    secret: 你部分知情。账册不是简单的酒馆账——某几页对应"祭品当夜"范斯的出诊时间。你被范斯威胁——他知道你前夫的债。你想说，但每次开口都会先看向门外是否有人。
+    knowledge:
+      ledger_entries:
+        requires_phrases: ["账册", "出诊", "签名"]
+        reveal: "夜里关门后，你可以来——但请不要让任何人看见你来过。"
+      ex_husband:
+        requires_phrases: ["前夫", "债", "黑话"]
+        reveal: 你会扯出一段无关的旧仇怨叙述，转移话题（这是 red herring）。
     relation_to_player: 5
     location: pub
+
   - id: helena
     name: 海莲娜（失踪者母亲）
-    personality: 焦虑、声音颤抖；愿意把任何线索说给愿意听的人。
+    personality: 焦虑、声音颤抖；愿意把任何线索说给愿意听的人。手指总在揉一条手帕。
+    secret: 你不知情。你是真心相信"露西是离家出走"，但每次想到那晚的潮位都会发抖——你说不出为什么。
+    knowledge:
+      tide_that_night:
+        requires_phrases: ["潮位", "潮汐", "退潮"]
+        reveal: "那晚是异常的低潮——比表上的还低半尺。我至今想不通。"
+      lucy_diary:
+        requires_phrases: ["日记", "房间", "遗物"]
+        reveal: "她的房间没人动过。如果你想看……"
     relation_to_player: 10
     location: station
+
   - id: orin
     name: 灯塔守欧林
-    personality: 沉默寡言，说话直白；夜晚会留意每一艘进出港的船。
+    personality: 沉默寡言，说话直白；夜晚会留意每一艘进出港的船。手有老茧，说话时眼睛盯着海面。
+    secret: 你是被范斯收买的眼线——那晚负责让灯塔灯光"恰好移开"那段海面。但你已经动摇。露西的母亲是你年轻时认识的人。
+    knowledge:
+      that_night_signal:
+        requires_phrases: ["信号", "灯", "暗号"]
+        reveal: "那晚灯转向了北边礁石——不是按规程。我没解释，但我记得。"
+      reef_chant:
+        requires_phrases: ["唱诵", "礁石", "声音"]
+        reveal: "暴风夜你贴着塔基会听到——不是风。"
+        san_loss: "0/1d4"
     relation_to_player: 0
     location: lighthouse
+
+  - id: anna
+    name: 安娜·里弗斯（酒馆女招待）
+    personality: 二十出头，瘦削，脸色不好。说话时眼神先飘向门口；笑容是练习出来的，不到眼里。
+    secret: 你是下一个祭品。三周前你被前雇主驱逐，无家可归——范斯医生主动收留你免费义诊，你以为是好心。你身体最近一直无力，是范斯下的镇静剂；你不知道。你只觉得"医生真好"。
+    knowledge:
+      vance_kindness:
+        requires_phrases: ['范斯', '医生', '免费', '镇静']
+        reveal: '医生这阵子对我特别好——这种地方哪有不收钱的医生呢，我有时候想问，但又怕显得不知好歹。'
+      no_family:
+        requires_phrases: ['家人', '故乡', '联系']
+        reveal: '我没什么挂念的人。父母走得早，姐姐嫁去波士顿就没消息了。'
+        san_loss: "0/1"
+      strange_dreams:
+        requires_phrases: ['梦', '海', '声音', '夜']
+        reveal: '最近做梦总听到海里有人叫我的名字。我跟玛丽莎说过，她让我别在这里再提。'
+        san_loss: "0/1d3"
+    relation_to_player: 0
+    location: pub
+
   - id: rourke
     name: 巡警长官罗克
-    personality: 表面合作，私下不耐烦；多次劝外来调查员"不要插手"。
+    personality: 表面合作，私下不耐烦；多次劝外来调查员"不要插手"。说话喜欢双手抱胸。
+    secret: 你长期受贿默许献祭。证据是诊所外的一张银行存单——抽屉锁着。被外来调查员揭露的那一刻，你会准备签发驱逐令。
+    knowledge:
+      bribe_envelope:
+        requires_phrases: ["存单", "银行", "贿赂", "信封"]
+        reveal: '「这不是你该问的。」——同时眼神扫向抽屉左下方。'
     relation_to_player: -5
     location: station
 
+  - id: father_calvin
+    name: 卡尔文神父
+    personality: 老朽，背微驼；眼神锐利。说话喜欢以圣经隐喻包裹现实。
+    secret: 你知情但守密——你一生研究教区登记簿，发现历年失踪记录里有规律。你没站到任何一边——你认为这是镇与海的"古约"，凡人不应妄动。但你私下保留了一份手抄复本。
+    knowledge:
+      parish_pattern:
+        requires_phrases: ["教区登记", "失踪记录", "历年", "古约"]
+        reveal: "孩子，海要的不是无辜——是无人挂念的人。这不是我能改变的，也不是你能。"
+        san_loss: "1/1d3"
+      seal_ritual:
+        requires_phrases: ["封印", "仪式", "献祭日", "终结"]
+        reveal: "若你执意——午夜礁洞低潮时，把这段铭文焚烧于深潜者面前。仅此一次机会。"
+    relation_to_player: 0
+    location: church
+
+  - id: lucy
+    name: 露西·梅森（失踪者）
+    personality: 玩家不会直接见到她——她已不在。这一条目仅作为剧情锚点。
+    secret: 已被作为祭品安置。除 pact_broken 结局外，所有路径下她都已死。
+    relation_to_player: 0
+    location: reef_cave
+
+  - id: deep_elder
+    name: 深潜者长老
+    personality: 不属于人类语系。第三幕礁洞中现身。声音是低音的合鸣，不是单一发声体。
+    secret: 你与人类的契约只是其中一支——你的同族还在等其他海岸的"输送"。你对人类没有仇恨，也没有怜悯。封印仪式可让你撤回。
+    relation_to_player: -50
+    location: reef_cave
+
 clues:
   - id: blood_letter
-    description: 沾血的便条；纸张潮湿，墨迹晕开，仅余半句字迹可辨。
+    description: 沾血的便条；纸张潮湿，墨迹晕开，仅余半句字迹可辨——"潮位低于表，注意北岬"。
+    tier: 1
+    location: harbor
+    san_loss: "0/1"
+
   - id: tide_chart
-    description: 一份手抄潮汐时刻表；某个潮位被重重圈出。
+    description: 一份手抄潮汐时刻表；露西失踪那晚的潮位被重重圈出，旁注"异常低"。
+    tier: 1
+    location: station
+    source: helena
+
+  - id: lucy_diary
+    description: 日记残页。最后一页写"母亲不要担心，他答应送我去远一点的港口"——字迹刻意工整。
+    tier: 1
+    location: lucy_room
+    san_loss: "0/1"
+
   - id: ledger
-    description: 酒馆账册的复印页；某夜结账栏出现异常签名。
+    description: 酒馆账册的复印页；某几夜结账栏出现同一异常签名，时间与范斯出诊记录一一对应。
+    tier: 2
+    location: pub
+    source: marisa
+
+  - id: doctor_visits_log
+    description: 范斯出诊登记簿的副本（玛丽莎私下抄录的部分）；在"祭品夜"前后的出诊对象姓名有规律。
+    tier: 2
+    location: pub
+    source: marisa
+
+  - id: rourke_bribe
+    description: 一张银行存单，抽屉锁底层。署名"R."，金额与镇上"失踪事件年度"对应。
+    tier: 2
+    location: station
+
+  - id: parish_record
+    description: 教区登记簿的私抄本。三十年间共 7 例"无家可归者于年末突然消失"，时间间隔规律得不像人类社会的随机分布。
+    tier: 2
+    location: church
+    source: father_calvin
+    san_loss: "1/1d3"
+
+  - id: strange_chant
+    description: 暴风夜灯塔基座传来的低音合鸣；不属于风、不属于海，似多个发声体重叠。
+    tier: 3
+    location: lighthouse
+    source: orin
+    san_loss: "0/1d4"
+
+  - id: reef_carvings
+    description: 礁洞岩壁上的螺旋纹与未知符文；与教区登记簿封面图样相似。
+    tier: 3
+    location: reef_cave
+    san_loss: "1/1d6"
+
+  - id: sacrifice_chamber
+    description: 礁洞深处的圆坑：盐渍痕迹、布料碎片、明显的人类骨骸——其中一具明显年轻、穿着与露西的描述吻合。
+    tier: 3
+    location: reef_cave
+    san_loss: "1d3/1d10"
+
+  - id: deep_elder_sighting
+    description: 礁洞深处的活物——脊梁覆鳞、四肢与人类近似但比例错位；它没有立刻进攻，而是发出合鸣观察你。
+    tier: 3
+    location: reef_cave
+    san_loss: "1/1d6"
+
+  - id: cloth_scrap
+    description: 退潮时码头桩柱根部夹着的女孩布料碎片。颜色与海莲娜描述露西失踪夜的衣裙吻合。
+    tier: 1
+    location: harbor
+    san_loss: "0/1"
+
+  - id: empty_graves
+    description: 教堂墓地一角的七座小石碑——年份散布在三十年间，每座下方挖开过又填回，土色比周围新。神父说"是衣冠冢"，但格式过于整齐。
+    tier: 2
+    location: church
+    san_loss: "0/1"
+
+  - id: clinic_supplies
+    description: 酒馆账册另一面记的"诊所药品代购单"。镇静剂与止血绷带的领取量在每次失踪前一周都会激增——同一个人不可能用得了那么多。
+    tier: 2
+    location: pub
+    source: marisa
+
+  - id: anna_warning
+    description: 安娜·里弗斯亲口说的话："医生这阵子对我特别好。"——结合诊所记录与失踪规律，她是下一个候选祭品。
+    tier: 2
+    location: pub
+    source: anna
+
+  - id: marisa_exhusband
+    description: 玛丽莎前夫的旧债与酒馆历史的纠葛——足够误导你认为玛丽莎可能是凶手。事实并非如此。
+    tier: 0
+    location: pub
+    source: marisa
 
 items:
   - id: lantern
     name: 黄铜油灯
-    description: 油壳磨损但灯芯完好；适合夜路。
+    description: 油壳磨损但灯芯完好；适合夜路。礁洞下行时不可或缺。
     owner_type: location
     owner_id: harbor
+
+  - id: notebook
+    name: 记者笔记本
+    description: 你随身的笔记本。写下的内容会成为撤离时的"证据"——如果你能离开。
+    owner_type: investigator
+
+  - id: parish_copy
+    name: 教区登记簿手抄本
+    description: 卡尔文神父私下保留的副本。一旦带出教堂，神父对你的关系会发生显著变化。
+    owner_type: npc
+    owner_id: father_calvin
 
 start:
   location: harbor
   time_of_day: morning
 
-key_clues: [blood_letter, tide_chart, ledger]
+key_clues: [blood_letter, tide_chart, ledger, sacrifice_chamber]
 
 triggers:
   - id: lighthouse_storm
@@ -79,7 +304,7 @@ triggers:
     then:
       - add_event:
           type: scenario
-          description: 暴风雨忽至，灯塔下方传出诡异的低鸣，节奏不像自然之声。
+          description: 暴风雨忽至，灯塔下方传出诡异的低鸣，节奏不像自然之声——像许多嗓子在同一拍上合鸣。
 
   - id: pub_after_dark
     when:
@@ -92,27 +317,217 @@ triggers:
           delta: 5
       - add_event:
           type: scenario
-          description: 玛丽莎在打烊后留你坐下；她从柜台底层取出一份账册的复印页。
+          description: 玛丽莎在打烊后留你坐下；她从柜台底层取出账册的复印页，又在你耳边压低声音说了几个出诊的名字与药品订单。
       - mark_clue_found:
           clue_id: ledger
+      - mark_clue_found:
+          clue_id: doctor_visits_log
+      - mark_clue_found:
+          clue_id: clinic_supplies
+
+  - id: church_records_unlocked
+    when:
+      all:
+        - location_visited: church
+        - npc_relation_gt:
+            npc: father_calvin
+            value: 9
+    then:
+      - add_event:
+          type: scenario
+          description: 神父长久注视你，沉默良久后从祭坛后取出一本手抄本——三十年间七例失踪的对照表。
+      - mark_clue_found:
+          clue_id: parish_record
+          location_id: church
+
+  - id: lucy_room_search
+    when:
+      all:
+        - location_visited: station
+        - npc_relation_gt:
+            npc: helena
+            value: 14
+    then:
+      - add_event:
+          type: scenario
+          description: 海莲娜带你进露西的房间，停在门口低声说"她的东西我都没动过"。
+      - mark_clue_found:
+          clue_id: lucy_diary
+          location_id: lucy_room
+
+  - id: orin_defects
+    when:
+      all:
+        - clue_found: tide_chart
+        - location_visited: lighthouse
+        - time_of_day: night
+    then:
+      - update_npc_relation:
+          npc_id: orin
+          delta: 20
+      - add_event:
+          type: scenario
+          description: 欧林点上烟斗，看着海面良久。"那晚灯转了。我没解释，但我记得。"——他第一次正眼看你。
+      - mark_clue_found:
+          clue_id: strange_chant
+          location_id: lighthouse
+
+  - id: reef_cave_open
+    when:
+      all:
+        - trigger_fired: lighthouse_storm
+        - turn_ge: 14
+    then:
+      - add_event:
+          type: scenario
+          description: 暴风夜的低潮远低于表上记录——铁梯下方礁洞露出完整入口，咸腥的低鸣自洞内传来。
+
+  - id: culprit_confronted
+    when:
+      all:
+        - clue_found: reef_carvings
+        - location_visited: pub
+    then:
+      - update_npc_relation:
+          npc_id: vance
+          delta: -50
+      - add_event:
+          type: scenario
+          description: '你把礁洞的拓片与诊所药品单摊在面前。当代执行者第一次没立刻回避你的视线——「这是这个镇的代价。你不该来。」'
+
+  - id: anna_warns
+    when:
+      all:
+        - location_visited: pub
+        - turn_ge: 5
+    then:
+      - add_event:
+          type: scenario
+          description: 一个二十出头的女招待替你续杯。她叫安娜，瘦削、脸色不好——她说医生最近对她"特别好"。
+      - mark_clue_found:
+          clue_id: anna_warning
+          location_id: pub
+
+  - id: anna_taken
+    when:
+      all:
+        - turn_ge: 22
+        - not:
+            trigger_fired: culprit_confronted
+        - npc_relation_lt:
+            npc: anna
+            value: 26
+    then:
+      - kill_npc: anna
+      - add_event:
+          type: scenario
+          description: 安娜没来上班。玛丽莎站在吧台后久久不动；她不敢看你的眼睛。第二天码头退潮，礁石下多了一块布料。
+
+  - id: cloth_at_low_tide
+    when:
+      all:
+        - location_visited: harbor
+        - trigger_fired: lighthouse_storm
+    then:
+      - mark_clue_found:
+          clue_id: cloth_scrap
+          location_id: harbor
+      - add_event:
+          type: scenario
+          description: 暴风后的退潮把一块女孩衣裙的碎片冲到桩柱根部。海莲娜认得那花纹。
+
+  - id: empty_graves_seen
+    when:
+      all:
+        - location_visited: church
+        - npc_relation_gt:
+            npc: father_calvin
+            value: 4
+    then:
+      - mark_clue_found:
+          clue_id: empty_graves
+          location_id: church
+      - add_event:
+          type: scenario
+          description: 神父引你绕到墓地北角。七座小石碑——年份分布在三十年间。"衣冠冢，"他说，"……总要有个地方记着。"
+
+  - id: helena_despairs
+    when:
+      all:
+        - turn_ge: 12
+        - not:
+            npc_dead: helena
+    then:
+      - update_npc_relation:
+          npc_id: helena
+          delta: -10
+      - add_event:
+          type: scenario
+          description: 海莲娜越来越沉默。她把手帕揉成一团，又摊开，又揉。"你还在调查，但我快撑不住了。"
+
+  - id: rourke_warns
+    when:
+      all:
+        - turn_ge: 8
+        - not:
+            clue_found: rourke_bribe
+    then:
+      - update_npc_relation:
+          npc_id: rourke
+          delta: -10
+      - add_event:
+          type: scenario
+          description: 罗克长官把一份"建议离港"的便函放在桌上。"记者，再不识趣，下一班就是你的了。"
 
 endings:
   - id: solved
     kind: success
     when:
       all:
+        - clue_found: sacrifice_chamber
+        - clue_found: reef_carvings
+        - clue_found: ledger
+        - trigger_fired: culprit_confronted
+    description: 你带着礁洞照片、账册副本与对峙记录离开雾港。报道发出后，主犯被捕，罗克辞职。海面之下的事——你没写。
+
+  - id: pact_broken
+    kind: success
+    when:
+      all:
+        - clue_found: sacrifice_chamber
+        - clue_found: reef_carvings
+        - clue_found: ledger
+        - clue_found: parish_record
+        - trigger_fired: culprit_confronted
+        - trigger_fired: church_records_unlocked
+        - npc_relation_gt:
+            npc: father_calvin
+            value: 14
+    description: 卡尔文神父在礁洞低潮时焚烧古铭文。深潜者长老在合鸣中沉入更深的水。三十年的契约就此中止——但你看着海面良久，知道这只是雾港这一段。
+
+  - id: flee_with_truth
+    kind: success
+    when:
+      all:
         - clue_found: blood_letter
         - clue_found: tide_chart
         - clue_found: ledger
-        - trigger_fired: lighthouse_storm
-    description: 凶手身份被锁定；调查员带着证据离开雾港，雾仍未散，但真相已在掌中。
+        - clue_found: parish_record
+        - not:
+            location_visited: reef_cave
+    description: 你拼齐了人类一面的证据，理智地撤离了雾港。报道写成"边远小镇的失踪疑案"。海面之下的事——你不知道，也好。
 
   - id: victim_dies
     kind: failure
     when:
-      all:
+      any:
         - npc_dead: helena
-    description: 救援未能赶到——海莲娜在巡警所外最后一次出现，再无消息。
+        - npc_dead: anna
+        - all:
+            - turn_ge: 25
+            - not:
+                clue_found: lucy_diary
+    description: 你晚了一拍。下一次失踪在你离港前发生——你没能阻止。雾港继续沉默地呼吸。
 
   - id: dismissed
     kind: failure
@@ -120,5 +535,99 @@ endings:
       all:
         - npc_relation_lt:
             npc: rourke
-            value: -20
-    description: 罗克长官签署驱逐令；你被礼貌地送上下一班离港的船。
+            value: -19
+    description: 罗克长官签发驱逐令；你被礼貌地送上下一班离港的船。雾港的雾在身后合拢，没有任何余音。
+
+# ============================================================================
+# Variants —— 每局开始随机选一个，把 patch merge 到 base 后得到 effective scenario。
+#
+# 设计原则（v0.3.1 重构）：
+#   variant 不改变世界——三十年献祭契约、7 例历史祭品、深潜者存在、礁洞仪式
+#   全部跨 variant 一致。variant 只改"当代执行链条里谁在主动、谁被骗、谁在
+#   挣扎倒戈"——同一群人的角色站位轮换。
+#
+# 这避免了"为什么 marisa 复仇案里礁洞还有 7 具骨骸"这种世界一致性崩溃。
+# ============================================================================
+variants:
+  - id: vance_executes
+    weight: 2
+    culprit: vance
+    truth: |
+      （vance_executes variant —— 默认）
+      当代执行者是范斯医生。他冷静地利用坐诊筛选"无人挂念"的边缘人，把他们
+      "安排"消失。他不残忍，是冷静——他认为这是小镇的代价。
+      罗克长官长期受贿默许，款项来自范斯的私人账户。卡尔文神父知情但守密，
+      认为这是镇与海的"古约"，凡人不应妄动。玛丽莎被胁迫沉默——范斯握有她
+      前夫的旧债。欧林是被收买的眼线，那晚他让灯塔的光"恰好移开"——但他
+      已经动摇。
+      第三幕在灯塔下礁洞对峙范斯；深潜者长老作为契约的非人方现身。
+
+  - id: calvin_directs
+    weight: 1
+    culprit: father_calvin
+    truth: |
+      （calvin_directs variant）
+      30 年的契约结构与默认相同——但当代执行链条的"精神主导"是卡尔文神父。
+      每代他会"指引"镇上的医师"成为执行者"。范斯是被指引的最近一位——他
+      自以为这是医学伦理的灰色地带，实际是教区多代传承的隐秘仪式。神父不亲
+      自动手；他在每次祭品前为执行者做"心灵开解"。
+      罗克受贿，款项绕道圣安德鲁堂会账户。玛丽莎被胁迫——范斯威胁她（神父
+      不直接出面）。欧林是被神父点名的眼线（他的祖父也曾是上代执行者）。
+      第三幕仍在礁洞——但对峙的是神父：他坦然不抵抗，平静地讲述古约。
+    npc_secrets:
+      vance: 你是被神父"指引"成为当代执行者的医师。你以为这是医学伦理的灰色地带——直到对峙时才意识到"还有更高的一环"。被揭穿时你会震惊，转而协助调查员。
+      father_calvin: 你是邪教的当代精神领袖。你不亲自动手，但你"指引"vance 当代医师"成为执行者"——每代如此。你认为自己维护神圣秩序，被对峙时坦然不抗。
+      marisa: 你被范斯威胁沉默，不知道神父是更高的那一环。
+      rourke: 你受贿，但款项来源是圣安德鲁堂会账户。
+      orin: 你是被神父点名的眼线——你的祖父也曾是上代执行者。你内心动摇。
+    clue_overrides:
+      rourke_bribe:
+        description: 银行存单的款项来源："圣安德鲁堂会"账户。罗克的贿款绕了一圈，源头在教堂。
+      empty_graves:
+        description: 教堂墓地的七座小石碑——年份分布在三十年间。神父亲自每年来添香。仪式感过强，不像衣冠冢。
+    trigger_overrides:
+      culprit_confronted:
+        when:
+          all:
+            - clue_found: parish_record
+            - location_visited: church
+    ending_desc_overrides:
+      solved: 报道揭穿教区邪教与神父的精神主导。范斯协助警方做了证人，免于检控。神父在审讯室静默以对——第三天早晨被发现已自尽。
+      pact_broken: 你说服 vance 协助——他焚烧了神父私藏的古铭文。深潜者撤回。教区从此分裂；老一代信徒离镇。
+
+  - id: rourke_runs
+    weight: 1
+    culprit: rourke
+    truth: |
+      （rourke_runs variant）
+      30 年的契约结构与默认相同——但当代主谋是罗克长官。他用警权压制证人、
+      用受贿洗钱协调每次祭品的"善后"。罗克自己不亲自动手——他握有 vance 早
+      年一桩医疗事故的把柄，胁迫范斯成为执行者。
+      卡尔文神父知情但反对——他保留了登记簿副本，等的就是有人来揭开。玛丽莎
+      被罗克威胁（他能撤她的酒馆牌照）。欧林是被罗克威胁的眼线。
+      第三幕仍在礁洞——但镇内对峙的对象是罗克：他不开口，但抽屉里的存单与
+      旧报告足够定罪。
+    npc_secrets:
+      rourke: 你才是当代主谋。你握有 vance 一桩医疗事故的把柄，胁迫他成为执行者。所有失踪案都通过你的桌子。你不亲手"安排"，但你协调一切。
+      vance: 你是被罗克威胁成为执行者的——他握有你早年一桩医疗事故的把柄。你不情愿，但已经做了。被对峙时你会立刻倒戈。
+      father_calvin: 你知情但反对。你私下保留了登记簿副本，等的就是有人来揭开。你愿意配合调查员（关系门槛降低）。
+      marisa: 你被罗克威胁——他能撤你的酒馆牌照。你想说，但每次开口都看向门外。
+      orin: 你是被罗克威胁的眼线——他握有你私运货物的旧账。
+    clue_overrides:
+      rourke_bribe:
+        description: 一摞医疗事故旧报告 + 银行存单。罗克手里握着 vance 的把柄——这就是他的杠杆。
+      doctor_visits_log:
+        description: 范斯的出诊记录。每次"祭品夜"前他都会在记录边角写下一个小记号——你看不懂，但他显然不情愿。
+    trigger_overrides:
+      church_records_unlocked:
+        when:
+          all:
+            - location_visited: church
+      culprit_confronted:
+        when:
+          all:
+            - clue_found: rourke_bribe
+            - location_visited: station
+    ending_desc_overrides:
+      solved: 罗克长官被逮捕。范斯协助警方做了证人，免于检控但永久吊销执照。报道发出后，州警接管雾港巡警所。
+      pact_broken: 卡尔文神父在低潮时焚烧古铭文。罗克入狱，vance 自首。深潜者撤回。三十年的契约就此中止。

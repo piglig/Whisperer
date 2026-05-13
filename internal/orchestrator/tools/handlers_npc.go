@@ -8,6 +8,7 @@ import (
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
@@ -54,8 +55,15 @@ func handleNPCSpeak(ctx context.Context, d *Dispatcher, raw json.RawMessage) (an
 		recent = retrieveNPCHistory(ctx, d.memory, npc, in.Intent)
 	}
 
+	var secret, knowledge string
+	if d.scenario != nil {
+		secret, knowledge = lookupSecretAndKnowledge(d.scenario, npc.ID)
+	}
+
 	dialogue, err := d.npcAgent.Speak(ctx, agent.NPCSpeakRequest{
 		Persona:       persona,
+		Secret:        secret,
+		Knowledge:     knowledge,
 		RecentHistory: recent,
 		Intent:        in.Intent,
 		PlayerLine:    in.PlayerLine,
@@ -108,6 +116,16 @@ func buildPersona(npc store.NPC) string {
 	}
 	fmt.Fprintf(&b, "Relation to player: %d\n", npc.RelationToPlayer)
 	return b.String()
+}
+
+// lookupSecretAndKnowledge 从 effective scenario 找指定 NPC 的 secret 与 knowledge 渲染。
+func lookupSecretAndKnowledge(s *scenario.Scenario, npcID string) (string, string) {
+	for _, n := range s.NPCs {
+		if n.ID == npcID {
+			return strings.TrimSpace(n.Secret), scenario.RenderNPCKnowledgeFor(s, npcID)
+		}
+	}
+	return "", ""
 }
 
 // retrieveNPCHistory 用 memory 拉 top-3 与 (NPC name + intent) 相关的事件，拼成段落。

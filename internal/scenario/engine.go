@@ -70,7 +70,13 @@ func (e *Engine) Apply(ctx context.Context, saveID string) error {
 	for _, n := range s.NPCs {
 		know := "{}"
 		if len(n.Knowledge) > 0 {
-			b, _ := json.Marshal(n.Knowledge)
+			// 持久化为 reveal-only 简表，避免把 requires_phrases 等 GM-only 元数据写入 store
+			// （store 是工具/SLA 共用层；GM 提示用模板单独读 scenario）。
+			flat := make(map[string]string, len(n.Knowledge))
+			for k, v := range n.Knowledge {
+				flat[k] = v.Reveal
+			}
+			b, _ := json.Marshal(flat)
 			know = string(b)
 		}
 		if err := e.repo.UpsertNPC(ctx, store.NPC{

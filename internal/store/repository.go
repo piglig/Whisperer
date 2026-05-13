@@ -64,12 +64,27 @@ func (r *Repository) CreateSave(ctx context.Context, s Save) error {
 		s.TimeOfDay = TimeMorning
 	}
 	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO saves (id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Name, s.ScenarioID, nullableString(s.CurrentLocationID), s.TurnCount,
+		INSERT INTO saves (id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Name, s.ScenarioID, s.VariantID, nullableString(s.CurrentLocationID), s.TurnCount,
 		string(s.TimeOfDay), s.CreatedAt, s.UpdatedAt,
 	)
 	return err
+}
+
+// SetSaveVariant 在创建 save 后写入选中的 variant id（也可用于 reload 后的修正）。
+func (r *Repository) SetSaveVariant(ctx context.Context, id, variantID string) error {
+	res, err := r.q.ExecContext(ctx,
+		`UPDATE saves SET variant_id = ?, updated_at = ? WHERE id = ?`,
+		variantID, nowMS(), id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *Repository) GetSave(ctx context.Context, id string) (Save, error) {
@@ -77,9 +92,9 @@ func (r *Repository) GetSave(ctx context.Context, id string) (Save, error) {
 	var loc sql.NullString
 	var tod string
 	err := r.q.QueryRowContext(ctx, `
-		SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at
+		SELECT id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at
 		FROM saves WHERE id = ?`, id,
-	).Scan(&s.ID, &s.Name, &s.ScenarioID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.Name, &s.ScenarioID, &s.VariantID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return Save{}, mapErr(err)
 	}
@@ -90,7 +105,7 @@ func (r *Repository) GetSave(ctx context.Context, id string) (Save, error) {
 
 func (r *Repository) ListSaves(ctx context.Context) ([]Save, error) {
 	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at
+		SELECT id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at
 		FROM saves ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
@@ -101,7 +116,7 @@ func (r *Repository) ListSaves(ctx context.Context) ([]Save, error) {
 		var s Save
 		var loc sql.NullString
 		var tod string
-		if err := rows.Scan(&s.ID, &s.Name, &s.ScenarioID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.ScenarioID, &s.VariantID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
 		s.CurrentLocationID = loc.String

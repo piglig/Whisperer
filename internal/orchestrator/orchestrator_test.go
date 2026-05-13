@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator/sla"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
@@ -171,4 +172,39 @@ func TestBuildSLAFeedback_NonEmpty(t *testing.T) {
 	// （fakeLLM 不记录请求，但通过最终 SLAReport.Passed 间接断言）
 	assert.True(t, res.SLAReport.Passed)
 	assert.False(t, strings.Contains(res.Narrative, "成功"))
+}
+
+func TestRenderSystemPrompt_InjectsTruthAndPrior(t *testing.T) {
+	llm := &fakeLLM{}
+	o, _, _, ctx := newOrchestrator(t, llm)
+	// fog_harbor base scenario 在 newOrchestrator 已加载。truth 字段非空。
+	out, err := o.renderSystemPrompt(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, out, "剧本真相")
+	assert.Contains(t, out, "深潜者")
+	assert.Contains(t, out, "NPC 秘密")
+	assert.Contains(t, out, "线索三层网")
+	assert.Contains(t, out, "Tier 1")
+
+	// 未配置 Meta 时不出现"玩家先验"段
+	assert.NotContains(t, out, "玩家先验")
+}
+
+func TestRecordCompletion_PersistsMeta(t *testing.T) {
+	llm := &fakeLLM{}
+	o, _, _, ctx := newOrchestrator(t, llm)
+	tmp := t.TempDir() + "/meta.json"
+	o.cfg.Meta = &scenario.MetaState{}
+	o.cfg.MetaPath = tmp
+	o.cfg.VariantID = "vance_pact"
+
+	require.NoError(t, o.cfg.Store.Repo().MarkClueFound(ctx, "blood_letter", "harbor", 1))
+
+	require.NoError(t, o.RecordCompletion(ctx, "solved"))
+	loaded, err := scenario.LoadMeta(tmp)
+	require.NoError(t, err)
+	assert.Equal(t, 1, loaded.PlayCount)
+	assert.Contains(t, loaded.CompletedVariants, "vance_pact")
+	assert.Contains(t, loaded.CompletedEndings, "solved")
+	assert.Contains(t, loaded.DiscoveredTruths, "blood_letter")
 }

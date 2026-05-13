@@ -72,10 +72,15 @@ func TestEngine_Evaluate_FiresAndDeduplicates(t *testing.T) {
 
 	fired, err := e.Evaluate(ctx, saveID)
 	require.NoError(t, err)
-	require.Len(t, fired, 1)
-	assert.Equal(t, "lighthouse_storm", fired[0].ID)
+	// lighthouse_storm 命中后，cloth_at_low_tide 的 (harbor visited + lighthouse_storm fired)
+	// 条件也立刻满足并在同一 Evaluate 内级联触发。
+	firedIDs := map[string]bool{}
+	for _, f := range fired {
+		firedIDs[f.ID] = true
+	}
+	assert.True(t, firedIDs["lighthouse_storm"], "lighthouse_storm should fire")
 
-	// 第二次不应再触发同一 trigger
+	// 第二次不应再触发同一批 trigger
 	fired2, err := e.Evaluate(ctx, saveID)
 	require.NoError(t, err)
 	assert.Empty(t, fired2)

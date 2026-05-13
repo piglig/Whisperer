@@ -83,20 +83,21 @@ func TestApply_WithMemory(t *testing.T) {
 	e := New(scn, r, mem)
 	require.NoError(t, e.Apply(ctx, saveID))
 
-	// memory 中应有 5 个 NPC 档案
-	hits, err := mem.QueryNPCs(ctx, "范斯", 5)
+	// memory 中应有所有 NPC 档案；至少包含 vance / father_calvin（v0.3.0 新增）
+	hits, err := mem.QueryNPCs(ctx, "范斯", len(scn.NPCs))
 	require.NoError(t, err)
-	require.Len(t, hits, 5)
+	require.Len(t, hits, len(scn.NPCs))
 	ids := map[string]bool{}
 	for _, h := range hits {
 		ids[h.ID] = true
 	}
 	assert.True(t, ids["vance"], "vance profile should be present")
+	assert.True(t, ids["father_calvin"], "father_calvin profile should be present")
 
-	// 线索描述也应进入 clues collection
-	chits, err := mem.QueryClues(ctx, "letter", 3)
+	// 线索描述也应进入 clues collection（v0.3.0 含 12 条 = 11 主线 + 1 red herring）
+	chits, err := mem.QueryClues(ctx, "letter", len(scn.Clues))
 	require.NoError(t, err)
-	require.Len(t, chits, 3)
+	require.Len(t, chits, len(scn.Clues))
 }
 
 func TestEngine_CheckEndings_TriggerFiredCondition(t *testing.T) {
@@ -104,12 +105,14 @@ func TestEngine_CheckEndings_TriggerFiredCondition(t *testing.T) {
 	require.NoError(t, e.Apply(ctx, saveID))
 	r := s.Repo()
 
-	// 满足 solved 结局：3 关键线索 + lighthouse_storm fired
-	require.NoError(t, r.MarkClueFound(ctx, "blood_letter", "harbor", 1))
-	require.NoError(t, r.MarkClueFound(ctx, "tide_chart", "harbor", 1))
+	// 满足 solved 结局（v0.3.0）：sacrifice_chamber + reef_carvings + ledger 找到，
+	// 且 vance_confronted 触发器已 fire。
 	require.NoError(t, r.MarkClueFound(ctx, "ledger", "pub", 1))
-	require.NoError(t, r.MarkLocationVisited(ctx, "lighthouse"))
-	_, err := e.Evaluate(ctx, saveID) // 触发 lighthouse_storm
+	require.NoError(t, r.MarkClueFound(ctx, "reef_carvings", "reef_cave", 1))
+	require.NoError(t, r.MarkClueFound(ctx, "sacrifice_chamber", "reef_cave", 1))
+	// vance_confronted 触发条件：找到 reef_carvings + 探访 pub
+	require.NoError(t, r.MarkLocationVisited(ctx, "pub"))
+	_, err := e.Evaluate(ctx, saveID) // 触发 vance_confronted
 	require.NoError(t, err)
 
 	end, err := e.CheckEndings(ctx, saveID)

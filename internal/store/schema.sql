@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS saves (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     scenario_id TEXT NOT NULL,
+    variant_id TEXT NOT NULL DEFAULT '',
     current_location_id TEXT,
     turn_count INTEGER NOT NULL DEFAULT 0,
     time_of_day TEXT NOT NULL DEFAULT 'morning' CHECK (time_of_day IN ('morning','afternoon','night')),

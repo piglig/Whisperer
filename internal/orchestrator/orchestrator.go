@@ -46,6 +46,16 @@ type Config struct {
 	// （SLA #3 NPC 一致性 / #7 角色知识闭环）。每回合最多增加两次 Haiku 调用。
 	// 缺省 nil 时 orchestrator 仅跑结构化 SLA（与 W6 行为一致）。
 	Judge sla.Judge
+
+	// VariantID 是本局所选的 variant id（来自 SelectVariant / SelectVariantByID）。
+	// 仅作记账与结局上报使用——effective scenario（含 patch）通过 cfg.Scenario 传入。
+	VariantID string
+
+	// Meta 是跨周目玩家先验。可空（首次游玩即 nil）。
+	Meta *scenario.MetaState
+
+	// MetaPath 在通关时把更新后的 meta 写回磁盘；空字符串表示不持久化。
+	MetaPath string
 }
 
 // Orchestrator 是 W6 的核心组件。
@@ -106,6 +116,31 @@ func (o *Orchestrator) History() []anthropic.MessageParam {
 // ResetHistory 清空对话历史。供 /load 等场景使用。
 func (o *Orchestrator) ResetHistory() { o.history = nil }
 
+// VariantID 返回本局所选 variant id（可空）。
+func (o *Orchestrator) VariantID() string { return o.cfg.VariantID }
+
+// RecordCompletion 在剧本到达终局时把 variant + ending + 揭开的关键真相写入跨周目 meta，
+// 然后落盘（若 MetaPath 非空）。重复调用幂等——MetaState.MarkCompletion 已去重。
+func (o *Orchestrator) RecordCompletion(ctx context.Context, endingID string) error {
+	if o.cfg.Meta == nil {
+		return nil
+	}
+	repo := o.cfg.Store.Repo()
+	clues, err := repo.ListFoundClues(ctx, o.cfg.SaveID)
+	if err != nil {
+		return fmt.Errorf("list found clues: %w", err)
+	}
+	truths := make([]string, 0, len(clues))
+	for _, c := range clues {
+		truths = append(truths, c.ID)
+	}
+	o.cfg.Meta.MarkCompletion(o.cfg.VariantID, endingID, truths)
+	if o.cfg.MetaPath == "" {
+		return nil
+	}
+	return scenario.SaveMeta(o.cfg.MetaPath, o.cfg.Meta)
+}
+
 // BindNewInvestigator 把一名新调查员接续到当前 save——先把旧的 active 调查员
 // deactivate（如有），再 upsert 新调查员并设为 active；同时清空对话历史让
 // 下回合不带上"前任"的对话遗留。
@@ -149,6 +184,13 @@ func (o *Orchestrator) renderSystemPrompt(ctx context.Context) (string, error) {
 	pc := agent.PromptContext{
 		ScenarioContext: fmt.Sprintf("剧本: %s（%s, v%s）；当前回合 %d；时段 %s",
 			o.cfg.Scenario.Title, o.cfg.Scenario.ID, o.cfg.Scenario.Version, sv.TurnCount, sv.TimeOfDay),
+		Truth:        scenario.RenderTruth(o.cfg.Scenario),
+		NPCSecrets:   scenario.RenderNPCSecrets(o.cfg.Scenario),
+		NPCKnowledge: scenario.RenderNPCKnowledge(o.cfg.Scenario),
+		ClueAtlas:    scenario.RenderClueAtlas(o.cfg.Scenario),
+	}
+	if o.cfg.Meta != nil {
+		pc.PlayerPrior = o.cfg.Meta.RenderForGM()
 	}
 
 	if inv, err := repo.GetActiveInvestigator(ctx, o.cfg.SaveID); err == nil {
