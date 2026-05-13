@@ -34,6 +34,7 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
+	"github.com/zhuzhenwu/whisperer/internal/telemetry"
 	"github.com/zhuzhenwu/whisperer/internal/tui"
 )
 
@@ -77,6 +78,7 @@ func main() {
 	llmMaxRetries := flag.Int("llm-max-retries", orInt(fileCfg.LLMRetriesRaw, 3), "max retries on transient LLM failures (0 = SDK default)")
 	llmTimeout := flag.Duration("llm-timeout", orDuration(fileCfg.LLMTimeout, 120*time.Second), "per-LLM-call hard timeout (0 = no timeout)")
 	traceDir := flag.String("trace-dir", orDefault(fileCfg.TraceDir, "runs"), "directory to append per-turn JSONL traces; '-' to disable")
+	otelExporter := flag.String("otel", "noop", "OpenTelemetry exporter: noop | stdout | otlp (OTLP endpoint via OTEL_EXPORTER_OTLP_ENDPOINT)")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -94,6 +96,19 @@ func main() {
 			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
+
+	otelShutdown, err := telemetry.Init(context.Background(), telemetry.Config{
+		Exporter:       *otelExporter,
+		ServiceVersion: "0.4.0",
+	})
+	if err != nil {
+		fail("init telemetry", err)
+	}
+	defer func() {
+		if shErr := otelShutdown(context.Background()); shErr != nil {
+			slog.Warn("telemetry shutdown", "err", shErr)
+		}
+	}()
 
 	ctx := context.Background()
 

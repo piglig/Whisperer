@@ -8,7 +8,14 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
+
+// tracerName 与 internal/telemetry.TracerName 保持一致——避免 import cycle 的同时
+// 让所有 whisperer 包的 span 都聚合到同一个 instrumentation scope。
+const tracerName = "github.com/zhuzhenwu/whisperer"
 
 // DefaultMaxIterations 是单次 Respond 内允许的 LLM ↔ tool 回合数上限。
 //
@@ -113,8 +120,16 @@ func (g *GMAgent) Respond(
 			Messages:  messages,
 			Tools:     g.tools,
 		}
-		msg, err := g.llm.NewMessage(ctx, params)
+		callCtx, callSpan := otel.Tracer(tracerName).Start(ctx, "whisperer.llm.message")
+		callSpan.SetAttributes(
+			attribute.String("llm.model", string(g.model)),
+			attribute.Int("llm.iter", iter),
+		)
+		msg, err := g.llm.NewMessage(callCtx, params)
 		if err != nil {
+			callSpan.SetStatus(codes.Error, "LLM call failed")
+			callSpan.RecordError(err)
+			callSpan.End()
 			return trace, messages, fmt.Errorf("agent: LLM call failed at iter %d: %w", iter, err)
 		}
 		trace.InputTokens += msg.Usage.InputTokens
@@ -125,6 +140,13 @@ func (g *GMAgent) Respond(
 		trace.InputCostUSD += inUSD
 		trace.OutputCostUSD += outUSD
 		trace.TotalCostUSD = trace.InputCostUSD + trace.OutputCostUSD
+		callSpan.SetAttributes(
+			attribute.Int64("llm.input_tokens", msg.Usage.InputTokens),
+			attribute.Int64("llm.output_tokens", msg.Usage.OutputTokens),
+			attribute.Float64("llm.cost_usd", inUSD+outUSD),
+			attribute.String("llm.stop_reason", string(msg.StopReason)),
+		)
+		callSpan.End()
 
 		// 把本轮 assistant 输出加进对话。
 		messages = append(messages, msg.ToParam())
