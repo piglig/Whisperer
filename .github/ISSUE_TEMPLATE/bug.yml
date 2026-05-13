@@ -1,0 +1,86 @@
+name: Bug report
+description: 报告一个 bug——与预期行为不一致。
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢花时间来报 bug。请尽量提供具体的复现步骤——猜不到的 bug 修不掉。
+
+  - type: input
+    id: version
+    attributes:
+      label: Whisperer 版本
+      description: 跑 `whisperer --version`（或 `git rev-parse HEAD` 如果是源码构建）。
+      placeholder: "v0.3.1 或 commit hash"
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go 版本
+      description: 跑 `go version`。
+      placeholder: "go1.25.0 linux/amd64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - WSL
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider
+      options:
+        - Anthropic 官方
+        - OpenRouter
+        - 其他 / 不涉及 LLM
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 步骤列表——每一步都要让我们能照做。
+      placeholder: |
+        1. `./whisperer --variant=calvin_directs --seed=42`
+        2. 在第 3 回合输入「我去教堂」
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 必要时附 trace（`runs/<save_id>/<ts>.jsonl`）；**API key 务必抹掉**。
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他线索
+      description: 已经尝试过的东西、可能的怀疑点、相关 PR/issue 链接。
+    validations:
+      required: false

@@ -1,186 +1,180 @@
 # Whisperer
 
-> An LLM-driven Call of Cthulhu 7e GM. Single-player. Rules are deterministic. NPCs persist. Cosmic horror is patient.
+> 让 LLM 当跑团 GM，让代码当裁判。
+> *An LLM-driven, single-player Cthulhu-flavored TRPG simulator with deterministic rules.*
 
-Whisperer 是一个**单人可玩、由 LLM 驱动、规则确定性可信**的克苏鲁 7e 跑团模拟器。LLM 负责叙事、NPC 扮演、氛围营造；Go 代码负责骰子、规则、状态持久化、SLA 校验。
-
-它不是又一个"无限续写互动小说"。玩家说"我杀了龙"，AI 不会配合"你杀了龙"——而是按 CoC 7e 规则掷骰、判定、按真实结果叙述。
-
-## 与现有方案的差异
-
-|  | AI Dungeon / NovelAI | Whisperer |
-|---|---|---|
-| 规则裁定 | LLM 自由发挥 | 代码确定性裁决（骰子、技能、SAN 全归 Go） |
-| NPC 一致性 | 长 context 漂移 | 子代理 + 向量记忆 + 可选 LLM judge |
-| 世界状态 | 文本即真相 | SQLite 持久化 + tool-only 写入 |
-| 玩家作弊 | 直接生效 | LLM 不可改数值，只能叙述 |
-
-## 架构（10 行版）
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](#测试--质量)
+[![Coverage](https://img.shields.io/badge/coverage-%3E85%25-brightgreen)](#测试--质量)
 
 ```
-TUI (bubbletea)
-  ↓
-Orchestrator     ── RunTurn ── 推进单回合
-  ├── GMAgent (Sonnet)         tool-use 循环
-  ├── NPCAgent (Haiku)         单段 NPC 台词
-  ├── Tool Dispatcher          20 个 tool 桥接 rules + store + memory
-  ├── SLA Validator            4 条结构化 + 可选 LLM-judge 2 条
-  ├── Scenario Engine          剧本 YAML + 触发器 + drift detector
-  └── Memory (chromem-go)      事件 / NPC / 线索 三集合
-        ↑
-   Rules Engine (rules)        纯函数：骰子、技能、SAN、对抗、战斗、成长
-   State Store  (store)        SQLite + 单文件存档
+┌─ 雾港疑案 · 第 7 回合 · night ─────────────────────────────┐
+│ 你蹲在码头边，潮水正在退去。桩柱根部夹着一块湿透的布料——     │
+│ 海莲娜形容露西失踪夜穿的就是同样的花纹。你把它装进证物袋，   │
+│ 海风像在你耳边低语。                                       │
+│                                                           │
+│ [Spot Hidden 60 → 47 success]                             │
+│ [SAN 60 → 59 (-1)]                                        │
+│                                                           │
+│ > 我把布料拿给海莲娜看_                                     │
+└───────────────────────────────────────────────────────────┘
 ```
+*↑ 录屏占位 — `docs/demo.cast` 上线后改 asciinema*
 
-完整模块边界与契约见 [`specs/00-architecture.md`](specs/00-architecture.md)。
+---
 
-## 运行
+## 这是什么
 
-### 依赖
+**Whisperer 是一个跑团 GM 程序**：你在终端里输入"我向酒馆老板娘打听"，
+它扮演整个克苏鲁式小镇——叙事、NPC 对话、氛围营造由 LLM 驱动；
+**骰子、技能检定、SAN 损失、HP 流转一律由 Go 代码裁决**，LLM 不能私自改数。
 
-- Go 1.22+（项目用 1.23 开发）
-- Anthropic API key（`ANTHROPIC_API_KEY` 环境变量）
+它不是另一个"无限续写互动小说"。玩家说"我杀了龙"，AI 不会配合"你杀了龙"——
+而是按 d100 规则掷骰、判定、按真实结果叙述。
+
+**3 句话讲清差别**：
+- ⚖️ **规则确定性**：骰子 / 技能 / SAN / 战斗全在 Go；LLM 只能调 tool，不能改数值
+- 🧠 **NPC 持久化**：子代理 + 向量记忆 + 关键词解锁知识，跨回合不漂移
+- 🎲 **重开性 ≥ 10 局**：3 个 variant × 5 结局 × 跨周目"似曾相识" meta
+
+> **Fan disclaimer**: Whisperer is an unofficial fan project. *Call of Cthulhu*® is © Chaosium Inc.
+> This project is not affiliated with or endorsed by Chaosium. No published Chaosium content
+> (printed scenarios, illustrations, NPC stat blocks from books) is redistributed; only
+> public-domain rule mechanics (d100, generic skill names) and original scenarios are used.
+
+---
+
+## 安装
+
+> 多平台二进制 / Homebrew / Scoop 在 Phase 3 (release pipeline) 上线。当前从源码构建：
 
 ```bash
-go build ./cmd/whisperer
+git clone https://github.com/piglig/Whisperer.git && cd Whisperer
+go build -o whisperer ./cmd/whisperer
 ./whisperer --help
 ```
 
-### 启动一局
+### LLM provider
 
-支持两种 LLM 提供商：
+支持 Anthropic 官方与 OpenRouter（Anthropic 兼容端点）：
 
 ```bash
-# Anthropic 官方
+# 官方
 export ANTHROPIC_API_KEY=sk-ant-...
-./whisperer                                    # 默认：whisperer.db + ./mem + fog_harbor
+./whisperer
 
-# OpenRouter（Anthropic 兼容端点 + Bearer token）
+# OpenRouter
 export OPENROUTER_API_KEY=sk-or-...
 ./whisperer --provider openrouter
 ```
 
-provider 探测规则：
-- 仅设了 `OPENROUTER_API_KEY` → 自动用 OpenRouter
-- 否则 → Anthropic 官方
-- 总是可以用 `--provider {anthropic|openrouter}` + `--api-key <k>` 显式覆盖
+`--provider` 不指定时自动探测：仅 OpenRouter key 走 OpenRouter，否则官方。
+`--api-key <k>` 显式覆盖。
 
-OpenRouter 模式下，模型名会自动加 `anthropic/` 前缀（如 `anthropic/claude-sonnet-4-5-20250929`）。
+---
 
-不带 `--save` 时自动新建存档 + 一名占位调查员 + 写入剧本初始数据。
-
-### Smoke check（不调 LLM）
+## Quickstart
 
 ```bash
+# 默认：自动建档 + 占位调查员 + fog_harbor 剧本 + 加权随机选 variant
+./whisperer
+
+# 强制选某 variant + 固定种子（便于回放调试）
+./whisperer --variant=calvin_directs --seed=42
+
+# 续读已有存档
+./whisperer --save <save-id>
+
+# 不调 LLM 的冷启动检查
 ./whisperer --smoke
 ```
 
-仅验证编译 + 依赖装载，无网络请求。
+进入 TUI 后输入你想做的事即可（自然语言）。常用命令：
 
-### 命令行参数
-
-| flag | 默认 | 说明 |
-|---|---|---|
-| `--db` | `whisperer.db` | SQLite 存档文件 |
-| `--memory` | `mem` | chromem-go 持久化目录；空字符串 = in-memory |
-| `--scenario` | `fog_harbor` | 内置剧本 id |
-| `--save` | _（空）_ | 已有 save id；缺省自动新建 |
-| `--provider` | 自动 | `anthropic` 或 `openrouter` |
-| `--api-key` | env | 显式覆盖；缺省读对应 provider 的 env |
-| `--smoke` | `false` | 仅 smoke check，不启 TUI |
-
-### TUI 命令
-
-| 命令 | 行为 |
+| 命令 | 作用 |
 |---|---|
-| `/sheet` | 调查员属性 |
-| `/inventory` (`/inv`) | 背包 |
-| `/time` | 当前时段（上午/下午/夜晚） |
-| `/talk <NPC> <话>` | 指名对某 NPC 说 |
+| `/save` | 把当前进度记录到 SQLite |
+| `/load <id>` | 切换到另一份存档 |
+| `/talk <NPC>` | 显式指定 NPC 对话 |
 | `/all <话>` | 对全场说 |
-| `/hint` | 求助：GM 仅给环境/NPC 暗示，不剧透 |
-| `/bind <名字> <职业>` | 仅在结局后：把新调查员接续到本剧本 |
-| `/help` | 帮助 |
-| `/quit` (`/exit` / `/q`) | 退出 |
+| `/hint` | 卡住时让 GM 给环境/NPC 暗示（不剧透） |
+| `/bind <名> <职业>` | 调查员死亡后接续新角色到本剧本 |
+| `/help` | 命令帮助 |
 
-## 重开性（v0.3.0 新）
+---
 
-雾港疑案不是一份静态 YAML——它是 **base + 3 variants + 跨周目 meta** 的组合。每局开始
-随机选一个 variant 决定真凶/共谋/线索分布；玩家通关后下一局，NPC 会出现"似曾相识"
-的暗示（不剧透）。三层重开性叠加：
+## 当前剧本：《雾港疑案》
 
-| 维度 | 数量 | 贡献 |
-|---|---|---|
-| variant（角色站位轮换） | 3 | vance_executes / calvin_directs / rourke_runs |
-| 结局分支 | 5 | solved / pact_broken / flee_with_truth / victim_dies / dismissed |
-| 关键词解锁的 NPC 隐藏知识 | 8 NPC × ~3 entries | 玩家用语言探索 |
-| 跨周目 meta 暗示 | runs/meta.json | NPC 第 2/3 局对玩家"似曾相识" |
+一桩边远港口的失踪案。表面是少女露西的母亲求助，背后是三十年的契约。
 
-保守估 **10–15 局新鲜感**。
+- **6 个调查地点**（码头 / 酒馆 / 灯塔 / 巡警所 / 教堂 / 礁洞）
+- **9 个 NPC**，每位都有秘密 + 关键词解锁的隐藏知识
+- **16 条线索**，按 Tier 1（表层）/ Tier 2（共谋）/ Tier 3（神话）三层递进 —— 遵循
+  [Three Clue Rule](https://thealexandrian.net/wordpress/1118/roleplaying-games/three-clue-rule)：
+  每个关键结论 ≥ 3 条独立线索路径
+- **3 个 variant**（`vance_executes` / `calvin_directs` / `rourke_runs`）每局加权随机
+  选一个，**轮换"当代谁是执行者"而不破坏世界一致性**
+- **5 类结局**：`pact_broken`（完美）/ `solved`（标准成功）/ `flee_with_truth`（带证据撤离）/
+  `victim_dies`（救人失败）/ `dismissed`（被驱逐）；调查员死亡走系统级尸检页
+- **跨周目 meta**（`runs/meta.json`）：玩家通关后下局 NPC 会出现"似曾相识"反应
 
-CLI flags：
-- `--variant <id>` 强制指定 variant（默认按权重随机）
-- `--seed <n>` 指定随机种子，便于回放/确定性测试
-- `--meta <path>` 跨周目 meta 文件路径（默认 `runs/meta.json`，`-` 关闭）
+完整剧本设定与真相手册：[`specs/08-fog-harbor-canon.md`](specs/08-fog-harbor-canon.md)。
 
-完整设定：[specs/08-fog-harbor-canon.md](specs/08-fog-harbor-canon.md)。
+---
 
-## 已实现（与需求文档 §3 Goals 对齐）
+## 它怎么工作的
 
-- [x] **G1** 雾港疑案 v0.3.1 完整剧本（自有原创；6 地点 / 9 NPC / 16 线索 / 12 触发器 / 5 结局 / 3 variants；Three Clue Rule + Anna 受害者面孔 + 角色站位 variant）
-- [x] **G2** 骰子 / 技能检定 / SAN / 战斗全部由代码裁决；LLM 通过 tool 调用，不允许私自宣判
-- [x] **G3** NPC 子代理 + 向量记忆，跨回合保持人格（结构化 + 可选 LLM judge）
-- [x] **G4** 世界状态持久化（SQLite + tool-only 写入）
-- [x] **G5** 单文件 SQLite 即一份存档；启动时 `--save <id>` 续读
-- [x] **G6** 调查员死亡/不定性疯狂触发结局页；`/bind` 命令绑定新调查员（剧本进度保留）
-- [x] **G7** 剧本结束 settle_growth；rules.SettleGrowth 已实装
+```
+TUI (bubbletea)
+  ↓
+Orchestrator      RunTurn 推进单回合
+  ├── GMAgent (Sonnet)        tool-use 循环
+  ├── NPCAgent (Haiku)        单段 NPC 台词，独立 system prompt
+  ├── Tool Dispatcher         20+ 个 tool 桥接 rules / store / memory
+  ├── SLA Validator           4 条结构化 + 可选 LLM judge × 2
+  ├── Scenario Engine         YAML 剧本 + 触发器 + 三幕节奏 + drift 检测
+  └── Memory (chromem-go)     事件 / NPC / 线索 三集合向量库
+       ↑
+  Rules Engine (rules)        纯函数：d100 / 技能 / SAN / 对抗 / 战斗 / 成长
+  State Store  (store)        SQLite + 单文件存档（含 variant / meta）
+```
 
-## 未实现 / Non-Goals
+设计准则与契约边界详见 [`specs/00-architecture.md`](specs/00-architecture.md)。
 
-| 项 | 状态 | 说明 |
-|---|---|---|
-| 多人联机 | ❌ | Non-Goals |
-| 多角色编队 | ❌ | Non-Goals |
-| 战斗深度（护甲、闪避、格挡） | ❌ | Non-Goals；MVP 仅含先攻、命中、伤害、impale |
-| AI 生成图像 / 语音 | ❌ | Non-Goals |
-| 用户上传自定义剧本 | ❌ | 首发只支持内置剧本 |
-| 移动端 / GUI | ❌ | Non-Goals |
-| 其他规则系统（D&D 等） | ❌ | Non-Goals |
-| 跨剧本战役 | ❌ | Non-Goals |
-| `/redo` 完整实现 | ⏳ | W7 推迟到独立 milestone（涉及历史 rewind） |
-| 全 24 职业模板分步建卡（F1.4） | ⏳ | 当前是快速生成 + 占位调查员 |
-| Autosave 回滚 | ⏳ | 已写 checkpoint 事件；文件克隆式回滚未做 |
-| LLM-as-judge 默认开启 | ⏳ | 接口 + Haiku 实现已就位；默认关闭，待评估 |
+---
 
 ## 项目布局
 
 ```
 Whisperer/
-├── cmd/whisperer/              CLI 入口
+├── cmd/
+│   ├── whisperer/                CLI / TUI 入口
+│   └── e2esmoke/                 真机 LLM 端到端跑步机
 ├── internal/
-│   ├── rules/                  纯函数规则引擎（W1）
-│   ├── store/                  SQLite + 迁移（W2）
-│   ├── agent/                  Anthropic SDK 封装 + GM/NPC agent（W3 W4）
-│   ├── memory/                 chromem-go 三集合（W4）
-│   ├── scenario/               YAML 剧本 + 触发器 + drift（W5）
-│   ├── orchestrator/           回合主循环 + tools + SLA（W6 W7）
-│   │   ├── tools/              20 个 tool 桥接 rules / store / memory
-│   │   └── sla/                4 条结构化 SLA + 可选 LLM judge
-│   └── tui/                    bubbletea 前端（W6）
-├── specs/                      逐周 spec 文档 + ADR
-└── runs/                       运行时 JSONL 日志（gitignore）
+│   ├── rules/                    纯函数规则引擎
+│   ├── store/                    SQLite + repository
+│   ├── agent/                    Anthropic SDK + GM/NPC agent + prompts
+│   ├── memory/                   chromem-go 三集合
+│   ├── scenario/                 YAML 剧本 + 触发器 + variant + meta
+│   ├── orchestrator/             回合主循环 + tools + SLA + judge
+│   └── tui/                      bubbletea 前端
+├── specs/                        架构 spec + ADR + 剧本 canon
+└── runs/                         运行时 trace / meta（gitignored）
 ```
+
+---
 
 ## 测试 / 质量
 
 ```bash
-make test    # 全测试
-make cover   # 覆盖率（门槛 85%）
-make build   # 单二进制
-make lint    # vet + golangci-lint（如装）
+make test    # go test -race ./...
+make cover   # 覆盖率，门槛 85%
+make build
+make lint    # vet + golangci-lint
 ```
 
-最近一次基准：
+最近一次覆盖率：
 
 | 包 | 覆盖率 |
 |---|---|
@@ -195,26 +189,33 @@ make lint    # vet + golangci-lint（如装）
 | tui | 93.0% |
 | **整体** | **~90%** |
 
-## SLA 校验
+---
 
-LLM 受 8 条 GM 行为契约约束（见 [`specs/06-orchestrator-and-tui.md`](specs/06-orchestrator-and-tui.md)）。每回合输出过校验器；失败 → 注入 `<sla_violation>` 让 GM 重写 narrative，不滚回状态变更。
+## 路线图
 
-| # | SLA 项 | 实现 |
-|---|---|---|
-| 1 | 检定即工具 | 结构化（关键词 + tool 检测） |
-| 2 | 状态即工具 | 结构化（同上，多对应 tool） |
-| 3 | NPC 一致性 | LLM-judge（可选） |
-| 4 | 物品守恒 | 结构化（destroyed_items 反向匹配） |
-| 5 | 数值不采信 | （MVP 待补） |
-| 6 | 失败即失败 | 结构化（关键词反向匹配） |
-| 7 | 角色知识闭环 | LLM-judge（可选） |
-| 8 | 失败收束阻断 | 结构化（hp/san/active 检查） |
+- ✅ v0.3.x — 引擎 + Fog Harbor v0.3.1（variant 角色站位 + Three Clue Rule + Anna）
+- 🔜 v0.4.0 — **工程成熟度**：CI / migrations (goose) / 结构化日志 (slog) / 真 embedder /
+  cost 计费 / OTEL spans / LLM 录放（go-vcr）
+- 🔜 v0.5.0 — **用户体验**：onboarding wizard / 友好错误 / i18n (CN+EN) / shell completion /
+  scenario 热加载
+- 🔜 v0.6.0 — **分发**：goreleaser 多平台 + Homebrew tap + Scoop bucket + 一行安装脚本
+- 🔜 v0.7.0+ — 内容与社区：第二/第三剧本 / scenario linter / 文档站 / asciinema demo
 
-## 设计决策（精选 ADR）
+详细路线图与决策记录：[`specs/00-architecture.md`](specs/00-architecture.md) +
+[`CHANGELOG.md`](CHANGELOG.md)。
 
-- [ADR 0001](specs/adr/0001-go-instead-of-python.md) — 用 Go 而非需求文档原写的 Python
-- [ADR 0002](specs/adr/0002-defer-sqlc.md) — W2 推迟 sqlc，schema 稳定后再评估
+---
+
+## 贡献
+
+欢迎 issue 与 PR。开发流程、commit 风格、剧本编写指南详见
+[`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+参与社区前请阅读 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)；
+发现安全问题请通过 [`SECURITY.md`](SECURITY.md) 描述的私下渠道报告。
+
+---
 
 ## License
 
-私人项目，未公开发布。
+[Apache License 2.0](LICENSE) © Whisperer contributors.
