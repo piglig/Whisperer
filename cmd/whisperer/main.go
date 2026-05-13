@@ -17,6 +17,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
+	wlog "github.com/zhuzhenwu/whisperer/internal/log"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
@@ -52,7 +54,11 @@ func main() {
 	variantID := flag.String("variant", "", "force a specific variant id (default: weighted random)")
 	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
 	metaPath := flag.String("meta", "runs/meta.json", "cross-run meta file path; '-' to disable")
+	logFormat := flag.String("log-format", "text", "log handler format: text | json")
+	logLevel := flag.String("log-level", "info", "log level: debug | info | warn | error")
 	flag.Parse()
+
+	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
 
 	if *smoke {
 		runSmoke()
@@ -61,9 +67,10 @@ func main() {
 
 	resolvedKey := resolveKey(*provider, *apiKey)
 	if resolvedKey == "" {
-		fmt.Fprintf(os.Stderr,
-			"no API key found. set %s, or pass --api-key.\n",
-			envKeyName(*provider))
+		slog.Error("no API key found",
+			"provider", *provider,
+			"env_var", envKeyName(*provider),
+			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
 
@@ -142,7 +149,7 @@ func main() {
 }
 
 func runSmoke() {
-	fmt.Println("Whisperer smoke check passed (no LLM calls were made).")
+	slog.Info("smoke check passed", "llm_called", false)
 }
 
 // autoProvider 探测环境变量决定默认 provider。
@@ -279,6 +286,6 @@ func ensureSaveWithVariant(
 }
 
 func fail(msg string, err error) {
-	fmt.Fprintf(os.Stderr, "%s: %v\n", msg, err)
+	slog.Error(msg, "err", err)
 	os.Exit(1)
 }

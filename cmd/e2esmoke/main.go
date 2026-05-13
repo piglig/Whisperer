@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
+	wlog "github.com/zhuzhenwu/whisperer/internal/log"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
@@ -39,14 +41,21 @@ func main() {
 	stopOnEnding := flag.Bool("stop-on-ending", true, "halt as soon as the scenario ending is reached")
 	variantID := flag.String("variant", "", "force a specific variant id; empty for weighted random")
 	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
+	logFormat := flag.String("log-format", "text", "log handler format: text | json")
+	logLevel := flag.String("log-level", "info", "log level: debug | info | warn | error")
 	flag.Parse()
+
+	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
 
 	key := *apiKey
 	if key == "" {
 		key = os.Getenv(envName(*provider))
 	}
 	if key == "" {
-		fmt.Fprintf(os.Stderr, "no API key. set %s or pass --api-key\n", envName(*provider))
+		slog.Error("no API key found",
+			"provider", *provider,
+			"env_var", envName(*provider),
+			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
 
@@ -77,7 +86,7 @@ func main() {
 	}
 	must("select variant", err)
 	if chosenVariant != "" {
-		fmt.Fprintf(os.Stderr, "[e2esmoke] variant=%s\n", chosenVariant)
+		slog.Info("variant selected", "variant_id", chosenVariant)
 	}
 
 	saveID := uuid.NewString()
@@ -273,12 +282,13 @@ func buildLLM(provider, key string) (*agent.Anthropic, anthropic.Model, anthropi
 
 func must(label string, err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", label, err)
+		attrs := []any{"err", err}
 		// json marshal pretty 抓出更多 SDK 嵌套错误细节
 		var anyErr any = err
 		if b, jerr := json.Marshal(anyErr); jerr == nil {
-			fmt.Fprintf(os.Stderr, "  raw: %s\n", string(b))
+			attrs = append(attrs, "raw", string(b))
 		}
+		slog.Error(label, attrs...)
 		os.Exit(1)
 	}
 }
