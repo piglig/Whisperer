@@ -19,11 +19,16 @@ type ToolCall struct {
 //
 // Narrative 是所有 TextBlock 的拼接（按出现顺序），便于 SLA #6 "失败即失败" 等基于
 // 文本的反向匹配。Iterations 计 LLM 回合数；超过 maxIter 时 Truncated 为真。
+//
+// Cost 字段是基于 internal/agent/cost.go 价格表的近似估算，模型未知时为 0。
 type TurnTrace struct {
-	Narrative    string     `json:"narrative"`
-	ToolCalls    []ToolCall `json:"tool_calls"`
-	Iterations   int        `json:"iterations"`
-	Truncated    bool       `json:"truncated"`
-	InputTokens  int64      `json:"input_tokens"`
-	OutputTokens int64      `json:"output_tokens"`
+	Narrative     string     `json:"narrative"`
+	ToolCalls     []ToolCall `json:"tool_calls"`
+	Iterations    int        `json:"iterations"`
+	Truncated     bool       `json:"truncated"`
+	InputTokens   int64      `json:"input_tokens"`
+	OutputTokens  int64      `json:"output_tokens"`
+	InputCostUSD  float64    `json:"input_cost_usd"`
+	OutputCostUSD float64    `json:"output_cost_usd"`
+	TotalCostUSD  float64    `json:"total_cost_usd"`
 }

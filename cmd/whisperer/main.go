@@ -56,6 +56,10 @@ func main() {
 	metaPath := flag.String("meta", "runs/meta.json", "cross-run meta file path; '-' to disable")
 	logFormat := flag.String("log-format", "text", "log handler format: text | json")
 	logLevel := flag.String("log-level", "info", "log level: debug | info | warn | error")
+	embedderProvider := flag.String("embedder", "fake", "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
+	embedderModel := flag.String("embedder-model", "", "embedder model id (provider-specific; defaults supplied for openai/cohere)")
+	embedderKey := flag.String("embedder-key", "", "embedder API key (overrides EMBEDDER_API_KEY)")
+	embedderBaseURL := flag.String("embedder-base-url", "", "embedder base URL (required for openai-compat; optional for ollama)")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -82,11 +86,28 @@ func main() {
 	}
 	defer st.Close()
 
-	mem, err := memory.New(*memDir, memory.NewFakeEmbedder(0))
+	embedderKeyResolved := *embedderKey
+	if embedderKeyResolved == "" {
+		embedderKeyResolved = os.Getenv("EMBEDDER_API_KEY")
+	}
+	embedder, err := memory.NewEmbedder(memory.EmbedderConfig{
+		Provider: *embedderProvider,
+		APIKey:   embedderKeyResolved,
+		Model:    *embedderModel,
+		BaseURL:  *embedderBaseURL,
+	})
+	if err != nil {
+		fail("build embedder", err)
+	}
+	mem, err := memory.New(*memDir, embedder)
 	if err != nil {
 		fail("open memory", err)
 	}
 	defer mem.Close()
+	slog.Info("memory initialized",
+		"dir", *memDir,
+		"embedder", *embedderProvider,
+		"embedder_model", *embedderModel)
 
 	baseScn, err := scenario.LoadBundled(*scenarioID)
 	if err != nil {

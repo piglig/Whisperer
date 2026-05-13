@@ -130,6 +130,7 @@ func main() {
 	inputs, totalTurns := buildInputPlan(*input, *inputsFile, *turns)
 
 	totalIn, totalOut := int64(0), int64(0)
+	totalCost := 0.0
 	totalDur := time.Duration(0)
 	for i := 1; i <= totalTurns; i++ {
 		ti := nextInput(inputs, i)
@@ -143,6 +144,7 @@ func main() {
 
 		totalIn += res.Trace.InputTokens
 		totalOut += res.Trace.OutputTokens
+		totalCost += res.Trace.TotalCostUSD
 		totalDur += dur
 
 		printSummary(res, dur)
@@ -158,7 +160,18 @@ func main() {
 	fmt.Printf("\n=== Run summary ===\n")
 	fmt.Printf("  total_input_tokens : %d\n", totalIn)
 	fmt.Printf("  total_output_tokens: %d\n", totalOut)
+	fmt.Printf("  total_cost_usd     : $%.4f  (≈ $%.2f/100K tokens)\n",
+		totalCost, costPerHundredK(totalIn+totalOut, totalCost))
 	fmt.Printf("  wall_clock         : %s\n", totalDur)
+}
+
+// costPerHundredK 把总消耗摊算到每 100K tokens 的 USD，便于对比模型档位。
+// totalTokens == 0 时返回 0。
+func costPerHundredK(totalTokens int64, totalCost float64) float64 {
+	if totalTokens == 0 {
+		return 0
+	}
+	return totalCost / float64(totalTokens) * 100_000
 }
 
 // buildInputPlan 决定本次跑的输入序列。
@@ -203,6 +216,8 @@ func printSummary(res orchestrator.TurnResult, dur time.Duration) {
 	fmt.Printf("  iterations       : %d (truncated=%v)\n", res.Trace.Iterations, res.Trace.Truncated)
 	fmt.Printf("  input_tokens     : %d\n", res.Trace.InputTokens)
 	fmt.Printf("  output_tokens    : %d\n", res.Trace.OutputTokens)
+	fmt.Printf("  cost_usd         : $%.4f  (in $%.4f / out $%.4f)\n",
+		res.Trace.TotalCostUSD, res.Trace.InputCostUSD, res.Trace.OutputCostUSD)
 	fmt.Printf("  tool_calls       : %d\n", len(res.Trace.ToolCalls))
 	for _, tc := range res.Trace.ToolCalls {
 		marker := " "

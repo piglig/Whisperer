@@ -119,6 +119,12 @@ func (g *GMAgent) Respond(
 		}
 		trace.InputTokens += msg.Usage.InputTokens
 		trace.OutputTokens += msg.Usage.OutputTokens
+		// 累加 cost：每次 LLM 调用都用 g.model 当时的价格表查一次。
+		// 单回合通常用同一模型，但理论上未来可能在 iter 之间切换；分摊到每次调用更稳。
+		inUSD, outUSD, _ := CostUSD(g.model, msg.Usage.InputTokens, msg.Usage.OutputTokens)
+		trace.InputCostUSD += inUSD
+		trace.OutputCostUSD += outUSD
+		trace.TotalCostUSD = trace.InputCostUSD + trace.OutputCostUSD
 
 		// 把本轮 assistant 输出加进对话。
 		messages = append(messages, msg.ToParam())
