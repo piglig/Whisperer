@@ -1,24 +1,19 @@
 // Package store implements the SQLite-backed state store for Whisperer.
 //
-// 单 SQLite 文件即一个 save；所有 entity 通过 save_id 关联。Schema 用 embed 嵌入
-// 二进制并在 Open 时执行（CREATE TABLE IF NOT EXISTS）。
+// 单 SQLite 文件即一个 save；所有 entity 通过 save_id 关联。Schema 由 goose
+// 在 Open 时按 internal/store/migrations/*.sql 顺序应用，老 DB 自动升级。
 //
 // 错误约定：所有 Get* 在记录不存在时返回 ErrNotFound，避免上层 import database/sql。
 package store
 
 import (
 	"context"
-	_ "embed"
+	"database/sql"
 	"errors"
 	"fmt"
 
-	"database/sql"
-
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动
 )
-
-//go:embed schema.sql
-var schemaSQL string
 
 // 标准错误。
 var (
@@ -55,9 +50,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		// in-memory 库无法切 WAL，忽略错误
 		_ = err
 	}
-	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
+	if err := migrate(ctx, db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
+		return nil, fmt.Errorf("apply migrations: %w", err)
 	}
 	return &Store{db: db}, nil
 }
