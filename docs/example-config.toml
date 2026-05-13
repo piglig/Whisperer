@@ -1,0 +1,47 @@
+# Whisperer 配置示例。
+#
+# 默认查找路径：
+#   - $XDG_CONFIG_HOME/whisperer/config.toml      （POSIX 推荐）
+#   - $HOME/.config/whisperer/config.toml         （POSIX 兜底）
+#   - %APPDATA%/whisperer/config.toml             （Windows）
+#
+# 也可以用 `whisperer --config /path/to/config.toml` 显式指定。
+#
+# 优先级（高 → 低）：CLI flag > 环境变量 > 本文件 > 内置默认。
+#
+# !!  API key 不写在这里。  !!
+# 出于安全考虑，本文件不接受 api_key 字段。请用环境变量：
+#   ANTHROPIC_API_KEY  / OPENROUTER_API_KEY  / EMBEDDER_API_KEY
+# 或者 CLI flag `--api-key` / `--embedder-key`。
+# 这样 config 文件可以放心提交到 dotfiles 仓库。
+
+# ---- LLM provider ----
+provider = "anthropic"                                  # anthropic | openrouter
+# model        = "claude-sonnet-4-7-20260101"          # GM 模型；不填走 SDK 内置常量
+# model_helper = "claude-haiku-4-5"                    # NPC / judge 子代理模型
+
+# ---- 剧本与存档 ----
+scenario  = "fog_harbor"
+# save    = "01HZX..."                                  # 续读已有存档；空则新建
+# variant = "vance_executes"                            # 强制 variant；空则按权重随机
+# seed    = 42                                          # variant 随机种子（0 = unix nano）
+
+# ---- 持久化路径 ----
+db_path    = "whisperer.db"
+memory_dir = "mem"
+trace_dir  = "runs"
+meta_path  = "runs/meta.json"
+
+# ---- 日志 ----
+log_format = "text"                                     # text | json
+log_level  = "info"                                     # debug | info | warn | error
+
+# ---- LLM 网络层 ----
+llm_max_retries = 3                                     # 0 走 SDK 默认
+llm_timeout     = "120s"                                # Go duration 字符串
+
+# ---- Embedder（NPC / 事件向量记忆） ----
+[embedder]
+provider = "fake"                                       # fake | openai | openai-compat | cohere | ollama | localai
+# model    = "text-embedding-3-small"                  # provider 相关；fake 不需要
+# base_url = "http://localhost:11434/api"              # ollama / openai-compat 必填

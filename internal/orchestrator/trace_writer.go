@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zhuzhenwu/whisperer/internal/secrets"
 )
 
 // TraceWriter 把每回合的 TurnResult 追加到 JSONL 文件，便于离线分析（按 variant
@@ -80,6 +82,12 @@ func (w *TraceWriter) Append(entry TraceEntry) error {
 	if entry.SaveID == "" {
 		entry.SaveID = w.saveID
 	}
+	// 在落盘前抹掉看起来像 API key 的子串。玩家可能在 TUI 里粘错；GM 也可能把
+	// system prompt 里出现过的 key 反刍出来——trace 文件可能被 share 出去做
+	// debug，这里是最后一道防线。
+	entry.UserInput = secrets.Redact(entry.UserInput)
+	entry.Result.Narrative = secrets.Redact(entry.Result.Narrative)
+	entry.Result.Trace.Narrative = secrets.Redact(entry.Result.Trace.Narrative)
 
 	if err := os.MkdirAll(filepath.Dir(w.sessionFile), 0o755); err != nil {
 		return fmt.Errorf("trace mkdir: %w", err)

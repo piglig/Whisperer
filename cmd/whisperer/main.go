@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
+	"github.com/zhuzhenwu/whisperer/internal/config"
 	wlog "github.com/zhuzhenwu/whisperer/internal/log"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
@@ -42,27 +43,40 @@ const (
 )
 
 func main() {
-	dbPath := flag.String("db", "whisperer.db", "SQLite save file path")
-	memDir := flag.String("memory", "mem", "memory persistent dir; empty for in-memory")
-	scenarioID := flag.String("scenario", "fog_harbor", "bundled scenario id")
-	saveID := flag.String("save", "", "existing save id to load; empty creates a new save")
-	provider := flag.String("provider", autoProvider(), "LLM provider: anthropic | openrouter")
+	// Phase 1: 预扫描 args 找到 --config，先把 TOML 加载好作为后续 flag 的默认值。
+	configPath := preParseConfigFlag(os.Args[1:])
+	fileCfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(2)
+	}
+	fileCfg.EnvOverlay()
+
+	// Phase 2: 注册全部 flag，把 fileCfg 作为它们的初始值。flag.Parse 之后，
+	// 命令行显式给的 flag 会覆盖 fileCfg 上的值；没给的就保留 fileCfg / 默认值。
+	_ = flag.String("config", configPath, "config file path (default: $XDG_CONFIG_HOME/whisperer/config.toml)")
+
+	dbPath := flag.String("db", orDefault(fileCfg.DBPath, "whisperer.db"), "SQLite save file path")
+	memDir := flag.String("memory", orDefault(fileCfg.MemDir, "mem"), "memory persistent dir; empty for in-memory")
+	scenarioID := flag.String("scenario", orDefault(fileCfg.Scenario, "fog_harbor"), "bundled scenario id")
+	saveID := flag.String("save", fileCfg.Save, "existing save id to load; empty creates a new save")
+	provider := flag.String("provider", orDefault(fileCfg.Provider, autoProvider()), "LLM provider: anthropic | openrouter")
 	apiKey := flag.String("api-key", "", "API key (overrides env). Anthropic→ANTHROPIC_API_KEY, OpenRouter→OPENROUTER_API_KEY")
-	modelOverride := flag.String("model", "", "override GM model id (full vendor/model on OpenRouter)")
-	modelHelperOverride := flag.String("model-helper", "", "override Haiku/helper model id")
+	modelOverride := flag.String("model", fileCfg.Model, "override GM model id (full vendor/model on OpenRouter)")
+	modelHelperOverride := flag.String("model-helper", fileCfg.ModelHelper, "override Haiku/helper model id")
 	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
-	variantID := flag.String("variant", "", "force a specific variant id (default: weighted random)")
-	seed := flag.Int64("seed", 0, "deterministic variant selection seed (0 = unix nano)")
-	metaPath := flag.String("meta", "runs/meta.json", "cross-run meta file path; '-' to disable")
-	logFormat := flag.String("log-format", "text", "log handler format: text | json")
-	logLevel := flag.String("log-level", "info", "log level: debug | info | warn | error")
-	embedderProvider := flag.String("embedder", "fake", "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
-	embedderModel := flag.String("embedder-model", "", "embedder model id (provider-specific; defaults supplied for openai/cohere)")
+	variantID := flag.String("variant", fileCfg.Variant, "force a specific variant id (default: weighted random)")
+	seed := flag.Int64("seed", fileCfg.Seed, "deterministic variant selection seed (0 = unix nano)")
+	metaPath := flag.String("meta", orDefault(fileCfg.MetaPath, "runs/meta.json"), "cross-run meta file path; '-' to disable")
+	logFormat := flag.String("log-format", orDefault(fileCfg.LogFormat, "text"), "log handler format: text | json")
+	logLevel := flag.String("log-level", orDefault(fileCfg.LogLevel, "info"), "log level: debug | info | warn | error")
+	embedderProvider := flag.String("embedder", orDefault(fileCfg.Embedder.Provider, "fake"), "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
+	embedderModel := flag.String("embedder-model", fileCfg.Embedder.Model, "embedder model id (provider-specific; defaults supplied for openai/cohere)")
 	embedderKey := flag.String("embedder-key", "", "embedder API key (overrides EMBEDDER_API_KEY)")
-	embedderBaseURL := flag.String("embedder-base-url", "", "embedder base URL (required for openai-compat; optional for ollama)")
-	llmMaxRetries := flag.Int("llm-max-retries", 3, "max retries on transient LLM failures (0 = SDK default)")
-	llmTimeout := flag.Duration("llm-timeout", 120*time.Second, "per-LLM-call hard timeout (0 = no timeout)")
-	traceDir := flag.String("trace-dir", "runs", "directory to append per-turn JSONL traces; '-' to disable")
+	embedderBaseURL := flag.String("embedder-base-url", fileCfg.Embedder.BaseURL, "embedder base URL (required for openai-compat; optional for ollama)")
+	llmMaxRetries := flag.Int("llm-max-retries", orInt(fileCfg.LLMRetriesRaw, 3), "max retries on transient LLM failures (0 = SDK default)")
+	llmTimeout := flag.Duration("llm-timeout", orDuration(fileCfg.LLMTimeout, 120*time.Second), "per-LLM-call hard timeout (0 = no timeout)")
+	traceDir := flag.String("trace-dir", orDefault(fileCfg.TraceDir, "runs"), "directory to append per-turn JSONL traces; '-' to disable")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -312,6 +326,51 @@ func ensureSaveWithVariant(
 		base.Title, variantHint, base.ID, base.Start.Location,
 	)
 	return id, eff, chosen, opening, nil
+}
+
+// preParseConfigFlag 在 flag.Parse 之前手工扫一次 args 找 --config / -config。
+//
+// 必要因为：要先知道 config 文件路径，才能用 TOML 内容作为后续 flag.StringVar 的
+// 默认值——而 flag.StringVar 必须在 flag.Parse 前注册完毕。
+func preParseConfigFlag(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--config" || a == "-config":
+			if i+1 < len(args) {
+				return args[i+1]
+			}
+		case strings.HasPrefix(a, "--config="):
+			return strings.TrimPrefix(a, "--config=")
+		case strings.HasPrefix(a, "-config="):
+			return strings.TrimPrefix(a, "-config=")
+		}
+	}
+	return ""
+}
+
+// orDefault 返回 v 非空时的 v，否则 fallback。
+func orDefault(v, fallback string) string {
+	if v != "" {
+		return v
+	}
+	return fallback
+}
+
+// orInt 返回 *p 时的 *p（保留显式 0），否则 fallback。
+func orInt(p *int, fallback int) int {
+	if p != nil {
+		return *p
+	}
+	return fallback
+}
+
+// orDuration 类似 orDefault，但 0 视为未设。
+func orDuration(v, fallback time.Duration) time.Duration {
+	if v > 0 {
+		return v
+	}
+	return fallback
 }
 
 func fail(msg string, err error) {

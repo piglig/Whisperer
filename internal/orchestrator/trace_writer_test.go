@@ -63,3 +63,22 @@ func TestValidateTraceDir(t *testing.T) {
 	assert.NoError(t, ValidateTraceDir(t.TempDir()))
 	assert.Error(t, ValidateTraceDir("~/somewhere"))
 }
+
+func TestTraceWriter_RedactsAPIKeys(t *testing.T) {
+	dir := t.TempDir()
+	w := NewTraceWriter(dir, "save-redact")
+	require.NoError(t, w.Append(TraceEntry{
+		TurnNumber: 1,
+		UserInput:  "我把 sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0 给了酒馆老板",
+		Result: TurnResult{
+			Narrative: "GM: 你递出便条 sk-or-v1-XXXXXXXXXXXXXXXXXXXX 但她拒绝。",
+		},
+	}))
+
+	raw, err := os.ReadFile(w.Path())
+	require.NoError(t, err)
+	body := string(raw)
+	assert.NotContains(t, body, "sk-ant-api03-")
+	assert.NotContains(t, body, "sk-or-v1-")
+	assert.Contains(t, body, "***REDACTED***")
+}

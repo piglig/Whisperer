@@ -38,6 +38,13 @@ Whisperer 是单用户单进程的本地 TUI 工具，但仍有几个值得关�
 
 1. **API key 泄露**：日志、trace、错误信息、上传的剧本/存档**绝不**应包含明文 key。
    如果你发现 key 出现在任何文件或网络请求 body 中，这是 bug 也是安全问题。
+   现有防御（截至 v0.4.x）：
+   - **slog 字段名屏蔽**：任何 attr key 含 `key`/`token`/`secret` 自动 → `***`
+     （`internal/log/log.go`）
+   - **trace JSONL 落盘前正则抹除**：扫 `sk-ant-…` / `sk-or-…` / `sk-…` /
+     `Bearer …` / `eyJ…JWT` 等已知形态（`internal/secrets/redact.go`）
+   - **TOML 配置不接受 api_key 字段**——只能从环境变量或 `--api-key` 取，物理隔离
+     (`internal/config/config.go`)。
 2. **Prompt injection**：剧本 YAML、用户输入、NPC 知识表都会进入 LLM context；
    恶意构造的剧本可能让 GM 越权执行 tool 或泄露其他 NPC 的 secret。
 3. **路径遍历**：剧本热加载（roadmap 中）从用户目录读 YAML；任何允许跨目录引用

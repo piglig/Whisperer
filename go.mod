@@ -3,6 +3,7 @@ module github.com/zhuzhenwu/whisperer
 go 1.25.7
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.42.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
