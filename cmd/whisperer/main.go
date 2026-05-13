@@ -29,6 +29,7 @@ import (
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/config"
+	"github.com/zhuzhenwu/whisperer/internal/i18n"
 	wlog "github.com/zhuzhenwu/whisperer/internal/log"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
@@ -79,9 +80,20 @@ func main() {
 	llmTimeout := flag.Duration("llm-timeout", orDuration(fileCfg.LLMTimeout, 120*time.Second), "per-LLM-call hard timeout (0 = no timeout)")
 	traceDir := flag.String("trace-dir", orDefault(fileCfg.TraceDir, "runs"), "directory to append per-turn JSONL traces; '-' to disable")
 	otelExporter := flag.String("otel", "noop", "OpenTelemetry exporter: noop | stdout | otlp (OTLP endpoint via OTEL_EXPORTER_OTLP_ENDPOINT)")
+	lang := flag.String("lang", "", "UI language tag (zh-CN | en | auto); empty/auto = detect from $LANG / $LC_ALL")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
+
+	resolvedLang := *lang
+	if resolvedLang == "" || resolvedLang == "auto" {
+		resolvedLang = i18n.DetectLang()
+	}
+	tr, err := i18n.New(resolvedLang)
+	if err != nil {
+		fail("init i18n", err)
+	}
+	_ = tr // 之后 wizard / clierror 会使用
 
 	if *smoke {
 		runSmoke()

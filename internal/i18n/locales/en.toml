@@ -1,0 +1,59 @@
+# Whisperer English locale.
+# Key conventions: see zh-CN.toml header.
+
+# ===== cli =====
+[cli.smoke_passed]
+other = "Smoke check passed: no LLM calls were made."
+
+# ===== wizard =====
+[wizard.welcome_title]
+other = "Whisperer first-run setup"
+[wizard.welcome_body]
+other = "Answer a few questions and Whisperer will save your preferences to {{.Path}}. You can edit or delete that file at any time."
+
+[wizard.choose_provider]
+other = "1) Pick an LLM provider [anthropic / openrouter] (default: anthropic)"
+[wizard.choose_provider_invalid]
+other = "Invalid choice {{.Choice}}: pick anthropic, openrouter, or press Enter for the default."
+
+[wizard.api_key_prompt]
+other = "2) Your {{.EnvVar}} (API key). Press Enter to skip — you can still set the env var later."
+[wizard.api_key_blank_warning]
+other = "No API key entered. Make sure {{.EnvVar}} is set before running Whisperer, otherwise it will not start."
+
+[wizard.choose_scenario]
+other = "3) Default scenario id (default: fog_harbor)"
+[wizard.choose_scenario_invalid]
+other = "Unrecognized scenario {{.Choice}}: only fog_harbor ships built-in; custom scenarios live under {{.HotloadDir}}."
+
+[wizard.choose_lang]
+other = "4) UI language [zh-CN / en / auto] (default: auto, follows $LANG)"
+
+[wizard.confirm]
+other = "Write these preferences to {{.Path}}? [Y/n]"
+[wizard.aborted]
+other = "Aborted. No file written."
+[wizard.written]
+other = "✓ Preferences saved to {{.Path}}."
+[wizard.api_key_hint]
+other = "Hint: API keys are never written to the config file — use the env var or --api-key as shown above."
+
+# ===== error =====
+[error.api_key_missing]
+other = "No API key found. Set {{.EnvVar}} or pass --api-key."
+[error.api_key_invalid]
+other = "{{.Provider}} rejected the API key. Verify it has not expired and has access to the requested model."
+[error.quota_exceeded]
+other = "{{.Provider}} quota exhausted or rate-limited (HTTP 429). Retry in a few minutes, or review your billing / project budget."
+[error.network]
+other = "Network error: {{.Reason}}. Check connectivity, DNS, and proxy settings (HTTPS_PROXY may be required on corporate networks)."
+[error.model_not_allowed]
+other = "Your account is not allowed to use model {{.Model}}. Try a different one (--model) or request whitelisting."
+[error.save_not_found]
+other = "Save {{.SaveID}} not found. Run `whisperer saves list` to inspect available saves."
+[error.scenario_not_found]
+other = "Scenario {{.Scenario}} not found. Built-in scenarios: {{.Builtin}}. Drop custom scenarios under {{.HotloadDir}}."
+[error.config_invalid]
+other = "Failed to parse config file {{.Path}}: {{.Reason}}. See docs/example-config.toml for a working reference."
+[error.unknown]
+other = "{{.Op}} failed: {{.Reason}}"

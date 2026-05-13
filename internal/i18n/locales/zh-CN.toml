@@ -1,0 +1,66 @@
+# Whisperer zh-CN 翻译目录。
+#
+# 键命名规约：domain.entity.action / domain.entity.field
+#   - cli.*       —— CLI 启动 / 退出 / smoke
+#   - error.*     —— 用户可见的友好错误（clierror 包消费）
+#   - wizard.*    —— 首次运行向导
+#   - saves.*     —— save 管理子命令
+#
+# 模板字段以 PascalCase（go-i18n 默认渲染）：{{.Provider}} / {{.SaveID}}
+
+# ===== cli =====
+[cli.smoke_passed]
+other = "冒烟检查通过：未发起任何 LLM 调用。"
+
+# ===== wizard =====
+[wizard.welcome_title]
+other = "Whisperer 首次运行向导"
+[wizard.welcome_body]
+other = "回答几个问题，把你的偏好保存到 {{.Path}}。任何时候可以编辑或删除该文件。"
+
+[wizard.choose_provider]
+other = "1) 选择 LLM provider [anthropic / openrouter]（默认 anthropic）"
+[wizard.choose_provider_invalid]
+other = "无效选择 {{.Choice}}：只接受 anthropic / openrouter / 回车默认。"
+
+[wizard.api_key_prompt]
+other = "2) 你的 {{.EnvVar}}（API key）。回车跳过——稍后通过环境变量提供也行。"
+[wizard.api_key_blank_warning]
+other = "未填写 API key。下次运行时请确保 {{.EnvVar}} 已设，否则 whisperer 无法启动。"
+
+[wizard.choose_scenario]
+other = "3) 默认剧本 ID（默认 fog_harbor）"
+[wizard.choose_scenario_invalid]
+other = "未识别的剧本 {{.Choice}}：内置剧本只有 fog_harbor；自定义剧本放在 {{.HotloadDir}}。"
+
+[wizard.choose_lang]
+other = "4) UI 语言 [zh-CN / en / auto]（默认 auto，按 $LANG 自动检测）"
+
+[wizard.confirm]
+other = "把以上偏好写入 {{.Path}}？[Y/n]"
+[wizard.aborted]
+other = "已取消。未写入任何文件。"
+[wizard.written]
+other = "✓ 偏好已保存到 {{.Path}}。"
+[wizard.api_key_hint]
+other = "提示：API key 不会写入配置文件——按上面的提示用环境变量或 --api-key 提供。"
+
+# ===== error =====
+[error.api_key_missing]
+other = "未找到 API key。设置 {{.EnvVar}} 环境变量，或者用 --api-key 显式传入。"
+[error.api_key_invalid]
+other = "API key 被服务器拒绝（{{.Provider}}）。检查 key 是否过期 / 是否对当前模型有访问权限。"
+[error.quota_exceeded]
+other = "{{.Provider}} 配额已用尽或速率受限（HTTP 429）。等几分钟再试，或检查计费/项目预算。"
+[error.network]
+other = "网络异常：{{.Reason}}。检查网络连接、DNS、代理；如在公司网络可能需要 HTTPS_PROXY。"
+[error.model_not_allowed]
+other = "你的账户不被允许使用模型 {{.Model}}。换一个模型（--model）或申请白名单。"
+[error.save_not_found]
+other = "存档 {{.SaveID}} 不存在。用 `whisperer saves list` 查看可用存档。"
+[error.scenario_not_found]
+other = "剧本 {{.Scenario}} 不存在。内置剧本：{{.Builtin}}。自定义剧本可放在 {{.HotloadDir}}。"
+[error.config_invalid]
+other = "配置文件 {{.Path}} 解析失败：{{.Reason}}。参考 docs/example-config.toml 修正。"
+[error.unknown]
+other = "{{.Op}} 失败：{{.Reason}}"
