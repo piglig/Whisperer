@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
+	"github.com/zhuzhenwu/whisperer/internal/clierror"
 	"github.com/zhuzhenwu/whisperer/internal/config"
 	"github.com/zhuzhenwu/whisperer/internal/i18n"
 	wlog "github.com/zhuzhenwu/whisperer/internal/log"
@@ -43,6 +44,10 @@ const (
 	providerAnthropic  = "anthropic"
 	providerOpenRouter = "openrouter"
 )
+
+// globalTranslator 在 main 解析完 --lang 后注入；fail() 取它做 i18n 渲染。
+// 早于 i18n 初始化的错误（极少；只有 flag 解析阶段）走 nil-safe 退化路径。
+var globalTranslator *i18n.Translator
 
 func main() {
 	// Phase 1: 预扫描 args 找到 --config，先把 TOML 加载好作为后续 flag 的默认值。
@@ -93,7 +98,7 @@ func main() {
 	if err != nil {
 		fail("init i18n", err)
 	}
-	_ = tr // 之后 wizard / clierror 会使用
+	globalTranslator = tr
 
 	if *smoke {
 		runSmoke()
@@ -401,6 +406,8 @@ func orDuration(v, fallback time.Duration) time.Duration {
 }
 
 func fail(msg string, err error) {
-	slog.Error(msg, "err", err)
+	// 友好提示走 stderr 给用户看；同时打一条 slog.Debug 把原始 error 留给观察层。
+	fmt.Fprintln(os.Stderr, clierror.Format(globalTranslator, msg, err))
+	slog.Debug("fail", "op", msg, "err", err)
 	os.Exit(1)
 }
