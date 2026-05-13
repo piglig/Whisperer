@@ -1,0 +1,31 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        host: api.anthropic.com
+        url: https://api.anthropic.com/v1/messages
+        method: POST
+        headers:
+            X-Api-Key:
+                - REDACTED
+            Anthropic-Version:
+                - REDACTED
+            Content-Type:
+                - application/json
+        body: |
+            {"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":[{"type":"text","text":"replay smoke"}]}]}
+      response:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        status: 200 OK
+        code: 200
+        headers:
+            Content-Type:
+                - application/json
+        body: |
+            {"id":"msg_replay_smoke_0001","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[{"type":"text","text":"replay ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":3}}

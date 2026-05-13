@@ -1,4 +1,4 @@
-.PHONY: build test cover lint tidy
+.PHONY: build test cover lint tidy record-cassettes
 
 GO ?= go
 COVER_THRESHOLD ?= 85
@@ -21,3 +21,11 @@ lint:
 
 tidy:
 	$(GO) mod tidy
+
+# 重录 LLM cassette。用真实 API key 跑一次，把 fixture 落到 testdata/cassettes/。
+# CI 跑回归一律走 ModeReplayOnly，永远不会触发录制。
+#
+# 用法（需要 ANTHROPIC_API_KEY 或 OPENROUTER_API_KEY）：
+#   make record-cassettes              # 只重录 internal/agent 下的回放测试
+record-cassettes:
+	WHISPERER_VCR_RECORD=1 $(GO) test -count=1 -tags=cassette ./internal/agent/...

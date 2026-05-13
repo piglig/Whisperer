@@ -74,6 +74,19 @@ YAML schema 与设计指南详见
 提交剧本到 `internal/scenario/data/`，附 `scenarios/<name>_canon.md`（GM-only 真相
 手册）+ 至少一份 e2esmoke 主线脚本。
 
+## LLM 录放（cassette）
+
+`internal/agent` 用 [`go-vcr/v4`](https://github.com/dnaeon/go-vcr) 把真实 LLM
+HTTP 调用录到 `internal/agent/testdata/cassettes/*.yaml`，让 CI 跑集成测试时
+不烧 token。
+
+- 默认行为（CI 与本地 `make test`）：**ModeReplayOnly**——从 fixture 重放，无网。
+- 重录：`make record-cassettes`（要求 `ANTHROPIC_API_KEY` 或 `OPENROUTER_API_KEY`）。
+- fixture 写盘前自动抹掉 `Authorization` / `x-api-key` / `openrouter-api-key`
+  等敏感头，安全提交到仓库。
+- 匹配器只看 method + path，不比 body——LLM SDK 每次请求里的版本号/trace id
+  会变化，但同一 path 的多次请求要按 cassette 顺序消费。
+
 ## 报 bug
 
 模板在 `.github/ISSUE_TEMPLATE/bug.yml`。请尽量包含：
