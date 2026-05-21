@@ -52,12 +52,39 @@ var globalTranslator *i18n.Translator
 func main() {
 	// Phase 1: 预扫描 args 找到 --config，先把 TOML 加载好作为后续 flag 的默认值。
 	configPath := preParseConfigFlag(os.Args[1:])
+	resolvedConfigPath := resolveWizardConfigPath(configPath)
+
+	// 极早分支：`whisperer init` 子命令在加载 config 之前就跑向导（避免空配置撞错误）
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		runInitSubcommand(resolvedConfigPath)
+		return
+	}
+
 	fileCfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		os.Exit(2)
 	}
 	fileCfg.EnvOverlay()
+
+	// 首次运行向导：configPath 文件不存在 + stdin 是 tty + 没传 init 子命令时
+	// 自动触发，让用户写一个 config 再继续。
+	if shouldRunWizard(nil, resolvedConfigPath) {
+		// 注意 i18n 此时还没初始化——用 stub 走默认 zh-CN
+		stubTr, _ := i18n.New("")
+		_, _, werr := runWizard(newWizardEnv(stubTr), resolvedConfigPath)
+		if werr != nil {
+			fmt.Fprintf(os.Stderr, "wizard: %v\n", werr)
+			os.Exit(2)
+		}
+		// 重新读 config 让后续 flag 默认值用上向导写入的值
+		fileCfg, err = config.Load(resolvedConfigPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "config: %v\n", err)
+			os.Exit(2)
+		}
+		fileCfg.EnvOverlay()
+	}
 
 	// Phase 2: 注册全部 flag，把 fileCfg 作为它们的初始值。flag.Parse 之后，
 	// 命令行显式给的 flag 会覆盖 fileCfg 上的值；没给的就保留 fileCfg / 默认值。
@@ -85,7 +112,7 @@ func main() {
 	llmTimeout := flag.Duration("llm-timeout", orDuration(fileCfg.LLMTimeout, 120*time.Second), "per-LLM-call hard timeout (0 = no timeout)")
 	traceDir := flag.String("trace-dir", orDefault(fileCfg.TraceDir, "runs"), "directory to append per-turn JSONL traces; '-' to disable")
 	otelExporter := flag.String("otel", "noop", "OpenTelemetry exporter: noop | stdout | otlp (OTLP endpoint via OTEL_EXPORTER_OTLP_ENDPOINT)")
-	lang := flag.String("lang", "", "UI language tag (zh-CN | en | auto); empty/auto = detect from $LANG / $LC_ALL")
+	lang := flag.String("lang", fileCfg.Lang, "UI language tag (zh-CN | en | auto); empty/auto = detect from $LANG / $LC_ALL")
 	flag.Parse()
 
 	wlog.SetDefault(wlog.New(*logFormat, *logLevel, os.Stderr))
@@ -358,6 +385,20 @@ func ensureSaveWithVariant(
 		base.Title, variantHint, base.ID, base.Start.Location,
 	)
 	return id, eff, chosen, opening, nil
+}
+
+// runInitSubcommand 处理 `whisperer init` ——重新跑向导，把结果写到 configPath。
+// 与首次运行向导共享 runWizard，但允许覆盖既有文件。
+func runInitSubcommand(configPath string) {
+	tr, _ := i18n.New("")
+	if configPath == "" {
+		fmt.Fprintln(os.Stderr, "wizard: cannot resolve config path; pass --config <path>")
+		os.Exit(2)
+	}
+	if _, _, err := runWizard(newWizardEnv(tr), configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "wizard: %v\n", err)
+		os.Exit(2)
+	}
 }
 
 // preParseConfigFlag 在 flag.Parse 之前手工扫一次 args 找 --config / -config。

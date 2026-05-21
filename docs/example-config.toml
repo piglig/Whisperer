@@ -36,6 +36,9 @@ meta_path  = "runs/meta.json"
 log_format = "text"                                     # text | json
 log_level  = "info"                                     # debug | info | warn | error
 
+# ---- UI ----
+# lang = "zh-CN"                                        # 留空 → 按 $LANG / $LC_ALL 自动检测
+
 # ---- LLM 网络层 ----
 llm_max_retries = 3                                     # 0 走 SDK 默认
 llm_timeout     = "120s"                                # Go duration 字符串

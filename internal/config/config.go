@@ -44,6 +44,9 @@ type Config struct {
 	LogFormat string `toml:"log_format"`
 	LogLevel  string `toml:"log_level"`
 
+	// UI 语言 tag（BCP-47，例如 "zh-CN" / "en"）。空 → 运行时按 $LANG 自动检测。
+	Lang string `toml:"lang"`
+
 	// LLM 网络层
 	LLMMaxRetries int           `toml:"-"`
 	LLMTimeout    time.Duration `toml:"-"`
@@ -147,6 +150,7 @@ func (c *Config) EnvOverlay() {
 	envSet(&c.MetaPath, "WHISPERER_META")
 	envSet(&c.LogFormat, "WHISPERER_LOG_FORMAT")
 	envSet(&c.LogLevel, "WHISPERER_LOG_LEVEL")
+	envSet(&c.Lang, "WHISPERER_LANG")
 	envSet(&c.Embedder.Provider, "WHISPERER_EMBEDDER")
 	envSet(&c.Embedder.Model, "WHISPERER_EMBEDDER_MODEL")
 	envSet(&c.Embedder.BaseURL, "WHISPERER_EMBEDDER_BASE_URL")
