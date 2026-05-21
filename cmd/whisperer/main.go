@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -175,16 +176,6 @@ func main() {
 	if err != nil {
 		fail("build embedder", err)
 	}
-	mem, err := memory.New(*memDir, embedder)
-	if err != nil {
-		fail("open memory", err)
-	}
-	defer mem.Close()
-	slog.Info("memory initialized",
-		"dir", *memDir,
-		"embedder", *embedderProvider,
-		"embedder_model", *embedderModel)
-
 	baseScn, err := scenario.LoadBundled(*scenarioID)
 	if err != nil {
 		fail("load scenario", err)
@@ -203,13 +194,31 @@ func main() {
 		}
 	}
 
-	currentSaveID, scn, chosenVariant, opening, err := ensureSaveWithVariant(
-		ctx, st, baseScn, *saveID, *variantID, *seed, mem,
+	currentSaveID, scn, chosenVariant, opening, needsScenarioApply, err := ensureSaveWithVariant(
+		ctx, st, baseScn, *saveID, *variantID, *seed,
 	)
 	if err != nil {
 		fail("ensure save", err)
 	}
 	_ = chosenVariant
+
+	saveMemDir := memoryDirForSave(*memDir, currentSaveID)
+	mem, err := memory.New(saveMemDir, embedder)
+	if err != nil {
+		fail("open memory", err)
+	}
+	defer mem.Close()
+	slog.Info("memory initialized",
+		"dir", saveMemDir,
+		"embedder", *embedderProvider,
+		"embedder_model", *embedderModel)
+
+	if needsScenarioApply {
+		engine := scenario.New(scn, st.Repo(), mem)
+		if err := engine.Apply(ctx, currentSaveID); err != nil {
+			fail("scenario apply", err)
+		}
+	}
 
 	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
@@ -309,33 +318,33 @@ func buildLLM(provider, key string, maxRetries int, timeout time.Duration) (*age
 	}
 }
 
-// ensureSaveWithVariant 若 saveID 为空则创建新 save + 选定 variant + Apply effective scenario；
+// ensureSaveWithVariant 若 saveID 为空则创建新 save + 选定 variant；
 // 否则按存档中已记录的 variant_id 重新 merge effective scenario，保证读档的一致性。
 //
 // 参数：
 //   - forceVariant：CLI --variant 强制指定（空时随机）；新 save 模式才生效
 //   - seed：CLI --seed 控制确定性；0 取 unix nano
 //
-// 返回：saveID / effective scenario / 选中 variant id（可空）/ 开场白 / 错误。
+// 返回：saveID / effective scenario / 选中 variant id（可空）/ 开场白 /
+// 是否需要 Apply scenario / 错误。
 func ensureSaveWithVariant(
 	ctx context.Context,
 	st *store.Store,
 	base *scenario.Scenario,
 	saveID, forceVariant string,
 	seed int64,
-	mem *memory.Memory,
-) (string, *scenario.Scenario, string, string, error) {
+) (string, *scenario.Scenario, string, string, bool, error) {
 	repo := st.Repo()
 	if saveID != "" {
 		sv, err := repo.GetSave(ctx, saveID)
 		if err != nil {
-			return "", nil, "", "", fmt.Errorf("save %q not found: %w", saveID, err)
+			return "", nil, "", "", false, fmt.Errorf("save %q not found: %w", saveID, err)
 		}
 		eff, vid, err := scenario.SelectVariantByID(base, sv.VariantID)
 		if err != nil {
-			return "", nil, "", "", fmt.Errorf("re-select variant %q: %w", sv.VariantID, err)
+			return "", nil, "", "", false, fmt.Errorf("re-select variant %q: %w", sv.VariantID, err)
 		}
-		return saveID, eff, vid, "", nil
+		return saveID, eff, vid, "", false, nil
 	}
 	id := uuid.NewString()
 
@@ -353,13 +362,13 @@ func ensureSaveWithVariant(
 		eff, chosen, err = scenario.SelectVariant(base, rng)
 	}
 	if err != nil {
-		return "", nil, "", "", fmt.Errorf("select variant: %w", err)
+		return "", nil, "", "", false, fmt.Errorf("select variant: %w", err)
 	}
 
 	if err := repo.CreateSave(ctx, store.Save{
 		ID: id, Name: "untitled", ScenarioID: base.ID, VariantID: chosen,
 	}); err != nil {
-		return "", nil, "", "", err
+		return "", nil, "", "", false, err
 	}
 	if err := repo.UpsertInvestigator(ctx, store.Investigator{
 		ID: uuid.NewString(), SaveID: id,
@@ -370,11 +379,7 @@ func ensureSaveWithVariant(
 		InventoryJSON: `["笔记本","钢笔"]`,
 		Active:        true,
 	}); err != nil {
-		return "", nil, "", "", err
-	}
-	engine := scenario.New(eff, repo, mem)
-	if err := engine.Apply(ctx, id); err != nil {
-		return "", nil, "", "", fmt.Errorf("scenario apply: %w", err)
+		return "", nil, "", "", false, err
 	}
 	variantHint := ""
 	if chosen != "" {
@@ -384,7 +389,14 @@ func ensureSaveWithVariant(
 		"《%s》开场%s。剧本 id: %s。当前位置: %s。\n（输入 /help 查看命令；输入你想做的事开始游戏。）",
 		base.Title, variantHint, base.ID, base.Start.Location,
 	)
-	return id, eff, chosen, opening, nil
+	return id, eff, chosen, opening, true, nil
+}
+
+func memoryDirForSave(baseDir, saveID string) string {
+	if baseDir == "" {
+		return ""
+	}
+	return filepath.Join(baseDir, saveID)
 }
 
 // runInitSubcommand 处理 `whisperer init` ——重新跑向导，把结果写到 configPath。

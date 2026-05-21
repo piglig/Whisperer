@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted（2026-05-12）
+Superseded（2026-05-21）
 
 ## 背景
 
@@ -11,6 +11,17 @@ Accepted（2026-05-12）
 ## 决策
 
 W2 用标准库 `database/sql` + 手写 thin repository。
+
+## 后续决策（2026-05-21）
+
+引入 sqlc 覆盖全部 store 查询。触发原因是 repository 已超过 600 行重新评估阈值，
+并且稳定 CRUD 的手写 `Scan`/null/bool 转换收益已经低于维护成本。
+
+当前策略：
+- `sqlc.yaml` 固定配置，`make sqlc` 使用 `sqlc v1.30.0`
+- 生成代码放在 `internal/store/storesqlc`
+- 外层 `Repository` API 不变，继续负责领域模型转换和 `ErrNotFound` 映射
+- 所有 store 表查询都由 sqlc 生成；不要再向 `repository.go` 添加手写 SQL
 
 ## 理由
 

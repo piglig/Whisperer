@@ -24,7 +24,7 @@ other = "No API key entered. Make sure {{.EnvVar}} is set before running Whisper
 [wizard.choose_scenario]
 other = "3) Default scenario id (default: fog_harbor)"
 [wizard.choose_scenario_invalid]
-other = "Unrecognized scenario {{.Choice}}: only fog_harbor ships built-in; custom scenarios live under {{.HotloadDir}}."
+other = "Unrecognized scenario {{.Choice}}: only fog_harbor ships built-in."
 
 [wizard.choose_lang]
 other = "4) UI language [zh-CN / en / auto] (default: auto, follows $LANG)"
@@ -52,7 +52,7 @@ other = "Your account is not allowed to use model {{.Model}}. Try a different on
 [error.save_not_found]
 other = "Save {{.SaveID}} not found. Run `whisperer saves list` to inspect available saves."
 [error.scenario_not_found]
-other = "Scenario {{.Scenario}} not found. Built-in scenarios: {{.Builtin}}. Drop custom scenarios under {{.HotloadDir}}."
+other = "Scenario {{.Scenario}} not found. Built-in scenarios: {{.Builtin}}."
 [error.config_invalid]
 other = "Failed to parse config file {{.Path}}: {{.Reason}}. See docs/example-config.toml for a working reference."
 [error.unknown]

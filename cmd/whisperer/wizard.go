@@ -106,15 +106,12 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 			result.Scenario = "fog_harbor"
 			break
 		}
-		// 内置目前只有 fog_harbor；自定义剧本走热加载（Phase 2.5）。
 		if choice == "fog_harbor" {
 			result.Scenario = choice
 			break
 		}
-		hotloadDir := scenarioHotloadDir()
 		env.println(tr.T("wizard.choose_scenario_invalid", map[string]any{
-			"Choice":     choice,
-			"HotloadDir": hotloadDir,
+			"Choice": choice,
 		}))
 	}
 	env.println()
@@ -207,21 +204,6 @@ func writeWizardConfig(path string, r wizardResult) error {
 		return fmt.Errorf("rename %s: %w", path, err)
 	}
 	return nil
-}
-
-// scenarioHotloadDir 返回 Phase 2.5 计划的剧本热加载目录（即使该 feature 还没写
-// 完，也可以提前在向导文案里告诉用户）。
-func scenarioHotloadDir() string {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "whisperer", "scenarios")
-	}
-	if app := os.Getenv("APPDATA"); app != "" {
-		return filepath.Join(app, "whisperer", "scenarios")
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, ".config", "whisperer", "scenarios")
-	}
-	return "$HOME/.config/whisperer/scenarios"
 }
 
 // shouldRunWizard 决定是否在 main 启动时自动跑向导。规则：

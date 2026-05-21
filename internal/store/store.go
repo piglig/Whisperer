@@ -1,7 +1,7 @@
 // Package store implements the SQLite-backed state store for Whisperer.
 //
-// 单 SQLite 文件即一个 save；所有 entity 通过 save_id 关联。Schema 由 goose
-// 在 Open 时按 internal/store/migrations/*.sql 顺序应用，老 DB 自动升级。
+// 单 SQLite 文件保存多个 save；所有 entity 通过 save_id 关联。Schema 由 goose
+// 在 Open 时按 internal/store/migrations/*.sql 顺序应用。
 //
 // 错误约定：所有 Get* 在记录不存在时返回 ErrNotFound，避免上层 import database/sql。
 package store
@@ -85,6 +85,7 @@ func (s *Store) RunTurn(ctx context.Context, fn func(ctx context.Context, r *Rep
 // querier 抽象 *sql.DB 与 *sql.Tx 的共同子集，让 Repository 在两种语境下复用同一组方法。
 type querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
@@ -93,6 +94,9 @@ type dbQuerier struct{ db *sql.DB }
 
 func (q dbQuerier) ExecContext(ctx context.Context, sqlStr string, args ...any) (sql.Result, error) {
 	return q.db.ExecContext(ctx, sqlStr, args...)
+}
+func (q dbQuerier) PrepareContext(ctx context.Context, sqlStr string) (*sql.Stmt, error) {
+	return q.db.PrepareContext(ctx, sqlStr)
 }
 func (q dbQuerier) QueryContext(ctx context.Context, sqlStr string, args ...any) (*sql.Rows, error) {
 	return q.db.QueryContext(ctx, sqlStr, args...)
@@ -105,6 +109,9 @@ type txQuerier struct{ tx *sql.Tx }
 
 func (q txQuerier) ExecContext(ctx context.Context, sqlStr string, args ...any) (sql.Result, error) {
 	return q.tx.ExecContext(ctx, sqlStr, args...)
+}
+func (q txQuerier) PrepareContext(ctx context.Context, sqlStr string) (*sql.Stmt, error) {
+	return q.tx.PrepareContext(ctx, sqlStr)
 }
 func (q txQuerier) QueryContext(ctx context.Context, sqlStr string, args ...any) (*sql.Rows, error) {
 	return q.tx.QueryContext(ctx, sqlStr, args...)

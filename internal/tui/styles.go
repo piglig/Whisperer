@@ -4,34 +4,55 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	titleBar = lipgloss.NewStyle().
-			Background(lipgloss.Color("#3a3f4b")).
-			Foreground(lipgloss.Color("#ffffff")).
+	sessionBarStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#121826")).
+			Foreground(lipgloss.Color("#e5e7eb")).
 			Bold(true).
 			Padding(0, 1)
 
-	statusBar = lipgloss.NewStyle().
-			Background(lipgloss.Color("#1f2330")).
-			Foreground(lipgloss.Color("#cdd6f4")).
+	paneTitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f8fafc")).
+			Bold(true)
+
+	labelStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#22d3ee")).
+			Bold(true)
+
+	accentStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#facc15")).
+			Bold(true)
+
+	mutedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#64748b"))
+
+	composerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f8fafc")).
+			Background(lipgloss.Color("#0f172a")).
 			Padding(0, 1)
 
+	gmLabelStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#c4b5fd")).
+			Bold(true)
+
+	playerLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#86efac")).
+				Bold(true)
+
 	gmStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#cba6f7"))
+		Foreground(lipgloss.Color("#c4b5fd"))
 
 	playerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#a6e3a1"))
+			Foreground(lipgloss.Color("#86efac"))
 
 	systemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#94a3b8")).
-			Italic(true)
+			Foreground(lipgloss.Color("#38bdf8")).
+			Bold(true)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f38ba8")).
+			Foreground(lipgloss.Color("#fca5a5")).
 			Bold(true)
 
 	endingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f9e2af")).
-			Bold(true).
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1)
+			Foreground(lipgloss.Color("#fde68a")).
+			Bold(true)
 )

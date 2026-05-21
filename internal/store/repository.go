@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/zhuzhenwu/whisperer/internal/store/storesqlc"
 )
 
 // Repository 在主连接或事务上提供 CRUD。同一签名既可用于 *sql.DB（store.Repo()）
@@ -25,19 +27,18 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// nullableString 把空字符串映射为 SQL NULL，反之亦然。
-func nullableString(s string) any {
+func sqlNullString(s string) sql.NullString {
 	if s == "" {
-		return nil
+		return sql.NullString{}
 	}
-	return s
+	return sql.NullString{String: s, Valid: true}
 }
 
-func nullableInt(i int) any {
+func sqlNullInt64(i int) sql.NullInt64 {
 	if i == 0 {
-		return nil
+		return sql.NullInt64{}
 	}
-	return i
+	return sql.NullInt64{Int64: int64(i), Valid: true}
 }
 
 func mapErr(err error) error {
@@ -63,67 +64,37 @@ func (r *Repository) CreateSave(ctx context.Context, s Save) error {
 	if s.TimeOfDay == "" {
 		s.TimeOfDay = TimeMorning
 	}
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO saves (id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Name, s.ScenarioID, s.VariantID, nullableString(s.CurrentLocationID), s.TurnCount,
-		string(s.TimeOfDay), s.CreatedAt, s.UpdatedAt,
-	)
-	return err
-}
-
-// SetSaveVariant 在创建 save 后写入选中的 variant id（也可用于 reload 后的修正）。
-func (r *Repository) SetSaveVariant(ctx context.Context, id, variantID string) error {
-	res, err := r.q.ExecContext(ctx,
-		`UPDATE saves SET variant_id = ?, updated_at = ? WHERE id = ?`,
-		variantID, nowMS(), id)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return storesqlc.New(r.q).CreateSave(ctx, storesqlc.CreateSaveParams{
+		ID:                s.ID,
+		Name:              s.Name,
+		ScenarioID:        s.ScenarioID,
+		VariantID:         s.VariantID,
+		CurrentLocationID: sqlNullString(s.CurrentLocationID),
+		TurnCount:         int64(s.TurnCount),
+		TimeOfDay:         string(s.TimeOfDay),
+		CreatedAt:         s.CreatedAt,
+		UpdatedAt:         s.UpdatedAt,
+	})
 }
 
 func (r *Repository) GetSave(ctx context.Context, id string) (Save, error) {
-	var s Save
-	var loc sql.NullString
-	var tod string
-	err := r.q.QueryRowContext(ctx, `
-		SELECT id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at
-		FROM saves WHERE id = ?`, id,
-	).Scan(&s.ID, &s.Name, &s.ScenarioID, &s.VariantID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt)
+	row, err := storesqlc.New(r.q).GetSave(ctx, id)
 	if err != nil {
 		return Save{}, mapErr(err)
 	}
-	s.CurrentLocationID = loc.String
-	s.TimeOfDay = TimeOfDay(tod)
-	return s, nil
+	return saveFromGetSaveRow(row), nil
 }
 
 func (r *Repository) ListSaves(ctx context.Context) ([]Save, error) {
-	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, name, scenario_id, variant_id, current_location_id, turn_count, time_of_day, created_at, updated_at
-		FROM saves ORDER BY updated_at DESC`)
+	rows, err := storesqlc.New(r.q).ListSaves(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Save{}
-	for rows.Next() {
-		var s Save
-		var loc sql.NullString
-		var tod string
-		if err := rows.Scan(&s.ID, &s.Name, &s.ScenarioID, &s.VariantID, &loc, &s.TurnCount, &tod, &s.CreatedAt, &s.UpdatedAt); err != nil {
-			return nil, err
-		}
-		s.CurrentLocationID = loc.String
-		s.TimeOfDay = TimeOfDay(tod)
-		out = append(out, s)
+	out := make([]Save, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, saveFromListSavesRow(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // SetTimeOfDay 设置存档的当前时间段。值非法时返回错误。
@@ -131,12 +102,14 @@ func (r *Repository) SetTimeOfDay(ctx context.Context, id string, t TimeOfDay) e
 	if !t.IsValid() {
 		return fmt.Errorf("invalid time_of_day: %q", t)
 	}
-	res, err := r.q.ExecContext(ctx, `UPDATE saves SET time_of_day = ?, updated_at = ? WHERE id = ?`,
-		string(t), nowMS(), id)
+	n, err := storesqlc.New(r.q).SetTimeOfDay(ctx, storesqlc.SetTimeOfDayParams{
+		TimeOfDay: string(t),
+		UpdatedAt: nowMS(),
+		ID:        id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -144,11 +117,10 @@ func (r *Repository) SetTimeOfDay(ctx context.Context, id string, t TimeOfDay) e
 }
 
 func (r *Repository) DeleteSave(ctx context.Context, id string) error {
-	res, err := r.q.ExecContext(ctx, `DELETE FROM saves WHERE id = ?`, id)
+	n, err := storesqlc.New(r.q).DeleteSave(ctx, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -156,17 +128,47 @@ func (r *Repository) DeleteSave(ctx context.Context, id string) error {
 }
 
 func (r *Repository) UpdateSaveProgress(ctx context.Context, id, locationID string, turn int) error {
-	res, err := r.q.ExecContext(ctx, `
-		UPDATE saves SET current_location_id = ?, turn_count = ?, updated_at = ?
-		WHERE id = ?`, nullableString(locationID), turn, nowMS(), id)
+	n, err := storesqlc.New(r.q).UpdateSaveProgress(ctx, storesqlc.UpdateSaveProgressParams{
+		CurrentLocationID: sqlNullString(locationID),
+		TurnCount:         int64(turn),
+		UpdatedAt:         nowMS(),
+		ID:                id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func saveFromGetSaveRow(s storesqlc.GetSaveRow) Save {
+	return Save{
+		ID:                s.ID,
+		Name:              s.Name,
+		ScenarioID:        s.ScenarioID,
+		VariantID:         s.VariantID,
+		CurrentLocationID: s.CurrentLocationID.String,
+		TurnCount:         int(s.TurnCount),
+		TimeOfDay:         TimeOfDay(s.TimeOfDay),
+		CreatedAt:         s.CreatedAt,
+		UpdatedAt:         s.UpdatedAt,
+	}
+}
+
+func saveFromListSavesRow(s storesqlc.ListSavesRow) Save {
+	return Save{
+		ID:                s.ID,
+		Name:              s.Name,
+		ScenarioID:        s.ScenarioID,
+		VariantID:         s.VariantID,
+		CurrentLocationID: s.CurrentLocationID.String,
+		TurnCount:         int(s.TurnCount),
+		TimeOfDay:         TimeOfDay(s.TimeOfDay),
+		CreatedAt:         s.CreatedAt,
+		UpdatedAt:         s.UpdatedAt,
+	}
 }
 
 // ============================================================================
@@ -174,50 +176,39 @@ func (r *Repository) UpdateSaveProgress(ctx context.Context, id, locationID stri
 // ============================================================================
 
 func (r *Repository) UpsertInvestigator(ctx context.Context, inv Investigator) error {
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO investigators (id, save_id, name, occupation, attrs_json, skills_json, hp, mp, san, inventory_json, active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			save_id = excluded.save_id,
-			name = excluded.name,
-			occupation = excluded.occupation,
-			attrs_json = excluded.attrs_json,
-			skills_json = excluded.skills_json,
-			hp = excluded.hp,
-			mp = excluded.mp,
-			san = excluded.san,
-			inventory_json = excluded.inventory_json,
-			active = excluded.active`,
-		inv.ID, inv.SaveID, inv.Name, inv.Occupation, inv.AttrsJSON, inv.SkillsJSON,
-		inv.HP, inv.MP, inv.SAN, inv.InventoryJSON, boolToInt(inv.Active),
-	)
-	return err
+	return storesqlc.New(r.q).UpsertInvestigator(ctx, storesqlc.UpsertInvestigatorParams{
+		ID:            inv.ID,
+		SaveID:        inv.SaveID,
+		Name:          inv.Name,
+		Occupation:    inv.Occupation,
+		AttrsJson:     inv.AttrsJSON,
+		SkillsJson:    inv.SkillsJSON,
+		Hp:            int64(inv.HP),
+		Mp:            int64(inv.MP),
+		San:           int64(inv.SAN),
+		InventoryJson: inv.InventoryJSON,
+		Active:        int64(boolToInt(inv.Active)),
+	})
 }
 
 func (r *Repository) GetActiveInvestigator(ctx context.Context, saveID string) (Investigator, error) {
-	var inv Investigator
-	var active int
-	err := r.q.QueryRowContext(ctx, `
-		SELECT id, save_id, name, occupation, attrs_json, skills_json, hp, mp, san, inventory_json, active
-		FROM investigators WHERE save_id = ? AND active = 1
-		LIMIT 1`, saveID,
-	).Scan(&inv.ID, &inv.SaveID, &inv.Name, &inv.Occupation, &inv.AttrsJSON, &inv.SkillsJSON,
-		&inv.HP, &inv.MP, &inv.SAN, &inv.InventoryJSON, &active)
+	row, err := storesqlc.New(r.q).GetActiveInvestigator(ctx, saveID)
 	if err != nil {
 		return Investigator{}, mapErr(err)
 	}
-	inv.Active = active != 0
-	return inv, nil
+	return investigatorFromSQLC(row), nil
 }
 
 func (r *Repository) UpdateInvestigatorVitals(ctx context.Context, id string, hp, mp, san int) error {
-	res, err := r.q.ExecContext(ctx, `
-		UPDATE investigators SET hp = ?, mp = ?, san = ? WHERE id = ?`,
-		hp, mp, san, id)
+	n, err := storesqlc.New(r.q).UpdateInvestigatorVitals(ctx, storesqlc.UpdateInvestigatorVitalsParams{
+		Hp:  int64(hp),
+		Mp:  int64(mp),
+		San: int64(san),
+		ID:  id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -225,37 +216,42 @@ func (r *Repository) UpdateInvestigatorVitals(ctx context.Context, id string, hp
 }
 
 func (r *Repository) ListInvestigators(ctx context.Context, saveID string) ([]Investigator, error) {
-	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, save_id, name, occupation, attrs_json, skills_json, hp, mp, san, inventory_json, active
-		FROM investigators WHERE save_id = ? ORDER BY name`, saveID)
+	rows, err := storesqlc.New(r.q).ListInvestigators(ctx, saveID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Investigator{}
-	for rows.Next() {
-		var inv Investigator
-		var active int
-		if err := rows.Scan(&inv.ID, &inv.SaveID, &inv.Name, &inv.Occupation, &inv.AttrsJSON, &inv.SkillsJSON,
-			&inv.HP, &inv.MP, &inv.SAN, &inv.InventoryJSON, &active); err != nil {
-			return nil, err
-		}
-		inv.Active = active != 0
-		out = append(out, inv)
+	out := make([]Investigator, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, investigatorFromSQLC(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (r *Repository) DeactivateInvestigator(ctx context.Context, id string) error {
-	res, err := r.q.ExecContext(ctx, `UPDATE investigators SET active = 0 WHERE id = ?`, id)
+	n, err := storesqlc.New(r.q).DeactivateInvestigator(ctx, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func investigatorFromSQLC(inv storesqlc.Investigator) Investigator {
+	return Investigator{
+		ID:            inv.ID,
+		SaveID:        inv.SaveID,
+		Name:          inv.Name,
+		Occupation:    inv.Occupation,
+		AttrsJSON:     inv.AttrsJson,
+		SkillsJSON:    inv.SkillsJson,
+		HP:            int(inv.Hp),
+		MP:            int(inv.Mp),
+		SAN:           int(inv.San),
+		InventoryJSON: inv.InventoryJson,
+		Active:        inv.Active != 0,
+	}
 }
 
 // ============================================================================
@@ -263,71 +259,49 @@ func (r *Repository) DeactivateInvestigator(ctx context.Context, id string) erro
 // ============================================================================
 
 func (r *Repository) UpsertNPC(ctx context.Context, n NPC) error {
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO npcs (id, save_id, name, personality, knowledge_json, relation_to_player, location_id, alive)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			save_id = excluded.save_id,
-			name = excluded.name,
-			personality = excluded.personality,
-			knowledge_json = excluded.knowledge_json,
-			relation_to_player = excluded.relation_to_player,
-			location_id = excluded.location_id,
-			alive = excluded.alive`,
-		n.ID, n.SaveID, n.Name, n.Personality, n.KnowledgeJSON, n.RelationToPlayer,
-		nullableString(n.LocationID), boolToInt(n.Alive),
-	)
-	return err
+	return storesqlc.New(r.q).UpsertNPC(ctx, storesqlc.UpsertNPCParams{
+		ID:               n.ID,
+		SaveID:           n.SaveID,
+		Name:             n.Name,
+		Personality:      n.Personality,
+		KnowledgeJson:    n.KnowledgeJSON,
+		RelationToPlayer: int64(n.RelationToPlayer),
+		LocationID:       sqlNullString(n.LocationID),
+		Alive:            int64(boolToInt(n.Alive)),
+	})
 }
 
 func (r *Repository) GetNPC(ctx context.Context, id string) (NPC, error) {
-	var n NPC
-	var loc sql.NullString
-	var alive int
-	err := r.q.QueryRowContext(ctx, `
-		SELECT id, save_id, name, personality, knowledge_json, relation_to_player, location_id, alive
-		FROM npcs WHERE id = ?`, id,
-	).Scan(&n.ID, &n.SaveID, &n.Name, &n.Personality, &n.KnowledgeJSON, &n.RelationToPlayer, &loc, &alive)
+	row, err := storesqlc.New(r.q).GetNPC(ctx, id)
 	if err != nil {
 		return NPC{}, mapErr(err)
 	}
-	n.LocationID = loc.String
-	n.Alive = alive != 0
-	return n, nil
+	return npcFromSQLC(row), nil
 }
 
 func (r *Repository) ListNPCsAtLocation(ctx context.Context, saveID, locationID string) ([]NPC, error) {
-	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, save_id, name, personality, knowledge_json, relation_to_player, location_id, alive
-		FROM npcs WHERE save_id = ? AND location_id = ? AND alive = 1
-		ORDER BY name`, saveID, locationID)
+	rows, err := storesqlc.New(r.q).ListNPCsAtLocation(ctx, storesqlc.ListNPCsAtLocationParams{
+		SaveID:     saveID,
+		LocationID: sqlNullString(locationID),
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []NPC{}
-	for rows.Next() {
-		var n NPC
-		var loc sql.NullString
-		var alive int
-		if err := rows.Scan(&n.ID, &n.SaveID, &n.Name, &n.Personality, &n.KnowledgeJSON, &n.RelationToPlayer, &loc, &alive); err != nil {
-			return nil, err
-		}
-		n.LocationID = loc.String
-		n.Alive = alive != 0
-		out = append(out, n)
+	out := make([]NPC, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, npcFromSQLC(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (r *Repository) UpdateNPCRelation(ctx context.Context, id string, delta int) error {
-	res, err := r.q.ExecContext(ctx, `
-		UPDATE npcs SET relation_to_player = relation_to_player + ? WHERE id = ?`,
-		delta, id)
+	n, err := storesqlc.New(r.q).UpdateNPCRelation(ctx, storesqlc.UpdateNPCRelationParams{
+		RelationToPlayer: int64(delta),
+		ID:               id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -335,15 +309,27 @@ func (r *Repository) UpdateNPCRelation(ctx context.Context, id string, delta int
 }
 
 func (r *Repository) KillNPC(ctx context.Context, id string) error {
-	res, err := r.q.ExecContext(ctx, `UPDATE npcs SET alive = 0 WHERE id = ?`, id)
+	n, err := storesqlc.New(r.q).KillNPC(ctx, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func npcFromSQLC(n storesqlc.Npc) NPC {
+	return NPC{
+		ID:               n.ID,
+		SaveID:           n.SaveID,
+		Name:             n.Name,
+		Personality:      n.Personality,
+		KnowledgeJSON:    n.KnowledgeJson,
+		RelationToPlayer: int(n.RelationToPlayer),
+		LocationID:       n.LocationID.String,
+		Alive:            n.Alive != 0,
+	}
 }
 
 // ============================================================================
@@ -351,48 +337,46 @@ func (r *Repository) KillNPC(ctx context.Context, id string) error {
 // ============================================================================
 
 func (r *Repository) UpsertLocation(ctx context.Context, l Location) error {
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO locations (id, save_id, name, description, parent_id, connections_json, visited)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			save_id = excluded.save_id,
-			name = excluded.name,
-			description = excluded.description,
-			parent_id = excluded.parent_id,
-			connections_json = excluded.connections_json,
-			visited = excluded.visited`,
-		l.ID, l.SaveID, l.Name, l.Description, nullableString(l.ParentID),
-		l.ConnectionsJSON, boolToInt(l.Visited),
-	)
-	return err
+	return storesqlc.New(r.q).UpsertLocation(ctx, storesqlc.UpsertLocationParams{
+		ID:              l.ID,
+		SaveID:          l.SaveID,
+		Name:            l.Name,
+		Description:     l.Description,
+		ParentID:        sqlNullString(l.ParentID),
+		ConnectionsJson: l.ConnectionsJSON,
+		Visited:         int64(boolToInt(l.Visited)),
+	})
 }
 
 func (r *Repository) GetLocation(ctx context.Context, id string) (Location, error) {
-	var l Location
-	var parent sql.NullString
-	var visited int
-	err := r.q.QueryRowContext(ctx, `
-		SELECT id, save_id, name, description, parent_id, connections_json, visited
-		FROM locations WHERE id = ?`, id,
-	).Scan(&l.ID, &l.SaveID, &l.Name, &l.Description, &parent, &l.ConnectionsJSON, &visited)
+	row, err := storesqlc.New(r.q).GetLocation(ctx, id)
 	if err != nil {
 		return Location{}, mapErr(err)
 	}
-	l.ParentID = parent.String
-	l.Visited = visited != 0
-	return l, nil
+	return locationFromSQLC(row), nil
 }
 
 func (r *Repository) MarkLocationVisited(ctx context.Context, id string) error {
-	res, err := r.q.ExecContext(ctx, `UPDATE locations SET visited = 1 WHERE id = ?`, id)
+	n, err := storesqlc.New(r.q).MarkLocationVisited(ctx, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func locationFromSQLC(l storesqlc.Location) Location {
+	return Location{
+		ID:              l.ID,
+		SaveID:          l.SaveID,
+		Name:            l.Name,
+		Description:     l.Description,
+		ParentID:        l.ParentID.String,
+		ConnectionsJSON: l.ConnectionsJson,
+		Visited:         l.Visited != 0,
+	}
 }
 
 // ============================================================================
@@ -403,49 +387,35 @@ func (r *Repository) UpsertItem(ctx context.Context, it Item) error {
 	if it.OwnerType == "" {
 		it.OwnerType = OwnerNone
 	}
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO items (id, save_id, name, description, owner_type, owner_id, properties_json, destroyed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			save_id = excluded.save_id,
-			name = excluded.name,
-			description = excluded.description,
-			owner_type = excluded.owner_type,
-			owner_id = excluded.owner_id,
-			properties_json = excluded.properties_json,
-			destroyed = excluded.destroyed`,
-		it.ID, it.SaveID, it.Name, it.Description, string(it.OwnerType),
-		nullableString(it.OwnerID), it.PropertiesJSON, boolToInt(it.Destroyed),
-	)
-	return err
+	return storesqlc.New(r.q).UpsertItem(ctx, storesqlc.UpsertItemParams{
+		ID:             it.ID,
+		SaveID:         it.SaveID,
+		Name:           it.Name,
+		Description:    it.Description,
+		OwnerType:      string(it.OwnerType),
+		OwnerID:        sqlNullString(it.OwnerID),
+		PropertiesJson: it.PropertiesJSON,
+		Destroyed:      int64(boolToInt(it.Destroyed)),
+	})
 }
 
 func (r *Repository) GetItem(ctx context.Context, id string) (Item, error) {
-	var it Item
-	var owner sql.NullString
-	var ownerType string
-	var destroyed int
-	err := r.q.QueryRowContext(ctx, `
-		SELECT id, save_id, name, description, owner_type, owner_id, properties_json, destroyed
-		FROM items WHERE id = ?`, id,
-	).Scan(&it.ID, &it.SaveID, &it.Name, &it.Description, &ownerType, &owner, &it.PropertiesJSON, &destroyed)
+	row, err := storesqlc.New(r.q).GetItem(ctx, id)
 	if err != nil {
 		return Item{}, mapErr(err)
 	}
-	it.OwnerType = OwnerType(ownerType)
-	it.OwnerID = owner.String
-	it.Destroyed = destroyed != 0
-	return it, nil
+	return itemFromSQLC(row), nil
 }
 
 func (r *Repository) MoveItem(ctx context.Context, id string, ownerType OwnerType, ownerID string) error {
-	res, err := r.q.ExecContext(ctx, `
-		UPDATE items SET owner_type = ?, owner_id = ? WHERE id = ?`,
-		string(ownerType), nullableString(ownerID), id)
+	n, err := storesqlc.New(r.q).MoveItem(ctx, storesqlc.MoveItemParams{
+		OwnerType: string(ownerType),
+		OwnerID:   sqlNullString(ownerID),
+		ID:        id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -453,11 +423,10 @@ func (r *Repository) MoveItem(ctx context.Context, id string, ownerType OwnerTyp
 }
 
 func (r *Repository) DestroyItem(ctx context.Context, id string) error {
-	res, err := r.q.ExecContext(ctx, `UPDATE items SET destroyed = 1 WHERE id = ?`, id)
+	n, err := storesqlc.New(r.q).DestroyItem(ctx, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -465,33 +434,28 @@ func (r *Repository) DestroyItem(ctx context.Context, id string) error {
 }
 
 func (r *Repository) ListDestroyedItems(ctx context.Context, saveID string) ([]Item, error) {
-	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, save_id, name, description, owner_type, owner_id, properties_json, destroyed
-		FROM items WHERE save_id = ? AND destroyed = 1
-		ORDER BY name`, saveID)
+	rows, err := storesqlc.New(r.q).ListDestroyedItems(ctx, saveID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return scanItems(rows)
+	out := make([]Item, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, itemFromSQLC(row))
+	}
+	return out, nil
 }
 
-func scanItems(rows *sql.Rows) ([]Item, error) {
-	out := []Item{}
-	for rows.Next() {
-		var it Item
-		var owner sql.NullString
-		var ownerType string
-		var destroyed int
-		if err := rows.Scan(&it.ID, &it.SaveID, &it.Name, &it.Description, &ownerType, &owner, &it.PropertiesJSON, &destroyed); err != nil {
-			return nil, err
-		}
-		it.OwnerType = OwnerType(ownerType)
-		it.OwnerID = owner.String
-		it.Destroyed = destroyed != 0
-		out = append(out, it)
+func itemFromSQLC(it storesqlc.Item) Item {
+	return Item{
+		ID:             it.ID,
+		SaveID:         it.SaveID,
+		Name:           it.Name,
+		Description:    it.Description,
+		OwnerType:      OwnerType(it.OwnerType),
+		OwnerID:        it.OwnerID.String,
+		PropertiesJSON: it.PropertiesJson,
+		Destroyed:      it.Destroyed != 0,
 	}
-	return out, rows.Err()
 }
 
 // ============================================================================
@@ -499,30 +463,26 @@ func scanItems(rows *sql.Rows) ([]Item, error) {
 // ============================================================================
 
 func (r *Repository) UpsertClue(ctx context.Context, c Clue) error {
-	_, err := r.q.ExecContext(ctx, `
-		INSERT INTO clues (id, save_id, scenario_id, description, found, found_in_location_id, found_at_turn)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			save_id = excluded.save_id,
-			scenario_id = excluded.scenario_id,
-			description = excluded.description,
-			found = excluded.found,
-			found_in_location_id = excluded.found_in_location_id,
-			found_at_turn = excluded.found_at_turn`,
-		c.ID, c.SaveID, c.ScenarioID, c.Description, boolToInt(c.Found),
-		nullableString(c.FoundInLocationID), nullableInt(c.FoundAtTurn),
-	)
-	return err
+	return storesqlc.New(r.q).UpsertClue(ctx, storesqlc.UpsertClueParams{
+		ID:                c.ID,
+		SaveID:            c.SaveID,
+		ScenarioID:        c.ScenarioID,
+		Description:       c.Description,
+		Found:             int64(boolToInt(c.Found)),
+		FoundInLocationID: sqlNullString(c.FoundInLocationID),
+		FoundAtTurn:       sqlNullInt64(c.FoundAtTurn),
+	})
 }
 
 func (r *Repository) MarkClueFound(ctx context.Context, id, locationID string, turn int) error {
-	res, err := r.q.ExecContext(ctx, `
-		UPDATE clues SET found = 1, found_in_location_id = ?, found_at_turn = ?
-		WHERE id = ?`, nullableString(locationID), nullableInt(turn), id)
+	n, err := storesqlc.New(r.q).MarkClueFound(ctx, storesqlc.MarkClueFoundParams{
+		FoundInLocationID: sqlNullString(locationID),
+		FoundAtTurn:       sqlNullInt64(turn),
+		ID:                id,
+	})
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
 	if n == 0 {
 		return ErrNotFound
 	}
@@ -530,29 +490,27 @@ func (r *Repository) MarkClueFound(ctx context.Context, id, locationID string, t
 }
 
 func (r *Repository) ListFoundClues(ctx context.Context, saveID string) ([]Clue, error) {
-	rows, err := r.q.QueryContext(ctx, `
-		SELECT id, save_id, scenario_id, description, found, found_in_location_id, found_at_turn
-		FROM clues WHERE save_id = ? AND found = 1
-		ORDER BY found_at_turn`, saveID)
+	rows, err := storesqlc.New(r.q).ListFoundClues(ctx, saveID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Clue{}
-	for rows.Next() {
-		var c Clue
-		var loc sql.NullString
-		var turn sql.NullInt64
-		var found int
-		if err := rows.Scan(&c.ID, &c.SaveID, &c.ScenarioID, &c.Description, &found, &loc, &turn); err != nil {
-			return nil, err
-		}
-		c.Found = found != 0
-		c.FoundInLocationID = loc.String
-		c.FoundAtTurn = int(turn.Int64)
-		out = append(out, c)
+	out := make([]Clue, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, clueFromSQLC(row))
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+func clueFromSQLC(c storesqlc.Clue) Clue {
+	return Clue{
+		ID:                c.ID,
+		SaveID:            c.SaveID,
+		ScenarioID:        c.ScenarioID,
+		Description:       c.Description,
+		Found:             c.Found != 0,
+		FoundInLocationID: c.FoundInLocationID.String,
+		FoundAtTurn:       int(c.FoundAtTurn.Int64),
+	}
 }
 
 // ============================================================================
@@ -566,17 +524,16 @@ func (r *Repository) AppendEvent(ctx context.Context, e Event) (int64, error) {
 	if e.RelatedEntitiesJSON == "" {
 		e.RelatedEntitiesJSON = "[]"
 	}
-	res, err := r.q.ExecContext(ctx, `
-		INSERT INTO events (save_id, turn, type, description, related_entities_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		e.SaveID, e.Turn, string(e.Type), e.Description, e.RelatedEntitiesJSON, e.CreatedAt,
-	)
+	id, err := storesqlc.New(r.q).AppendEvent(ctx, storesqlc.AppendEventParams{
+		SaveID:              e.SaveID,
+		Turn:                int64(e.Turn),
+		Type:                string(e.Type),
+		Description:         e.Description,
+		RelatedEntitiesJson: e.RelatedEntitiesJSON,
+		CreatedAt:           e.CreatedAt,
+	})
 	if err != nil {
 		return 0, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("last insert id: %w", err)
 	}
 	return id, nil
 }
@@ -584,33 +541,31 @@ func (r *Repository) AppendEvent(ctx context.Context, e Event) (int64, error) {
 // ListEvents 返回 [fromTurn, toTurn] 闭区间事件，按 (turn, id) 升序。
 // fromTurn = 0 表示不限下界；toTurn = 0 表示不限上界。
 func (r *Repository) ListEvents(ctx context.Context, saveID string, fromTurn, toTurn int) ([]Event, error) {
-	q := `
-		SELECT id, save_id, turn, type, description, related_entities_json, created_at
-		FROM events WHERE save_id = ?`
-	args := []any{saveID}
-	if fromTurn > 0 {
-		q += ` AND turn >= ?`
-		args = append(args, fromTurn)
-	}
-	if toTurn > 0 {
-		q += ` AND turn <= ?`
-		args = append(args, toTurn)
-	}
-	q += ` ORDER BY turn ASC, id ASC`
-	rows, err := r.q.QueryContext(ctx, q, args...)
+	rows, err := storesqlc.New(r.q).ListEvents(ctx, storesqlc.ListEventsParams{
+		SaveID:  saveID,
+		Column2: int64(fromTurn),
+		Turn:    int64(fromTurn),
+		Column4: int64(toTurn),
+		Turn_2:  int64(toTurn),
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Event{}
-	for rows.Next() {
-		var e Event
-		var typ string
-		if err := rows.Scan(&e.ID, &e.SaveID, &e.Turn, &typ, &e.Description, &e.RelatedEntitiesJSON, &e.CreatedAt); err != nil {
-			return nil, err
-		}
-		e.Type = EventType(typ)
-		out = append(out, e)
+	out := make([]Event, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, eventFromSQLC(row))
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+func eventFromSQLC(e storesqlc.Event) Event {
+	return Event{
+		ID:                  e.ID,
+		SaveID:              e.SaveID,
+		Turn:                int(e.Turn),
+		Type:                EventType(e.Type),
+		Description:         e.Description,
+		RelatedEntitiesJSON: e.RelatedEntitiesJson,
+		CreatedAt:           e.CreatedAt,
+	}
 }

@@ -3,9 +3,11 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,6 +48,18 @@ func newTestStore(t *testing.T) (*store.Store, string) {
 	require.NoError(t, s.Repo().UpsertLocation(ctx, store.Location{
 		ID: "harbor", SaveID: id, Name: "雾港", Description: "x",
 	}))
+	require.NoError(t, s.Repo().UpsertNPC(ctx, store.NPC{
+		ID: "vance", SaveID: id, Name: "范斯", Personality: "冷静",
+		KnowledgeJSON: "{}", LocationID: "harbor", Alive: true,
+	}))
+	require.NoError(t, s.Repo().UpsertNPC(ctx, store.NPC{
+		ID: "villager", SaveID: id, Name: "村民", Personality: "紧张",
+		KnowledgeJSON: "{}", LocationID: "harbor", Alive: true,
+	}))
+	require.NoError(t, s.Repo().UpsertClue(ctx, store.Clue{
+		ID: "cloth", SaveID: id, ScenarioID: "fh", Description: "湿布片",
+		Found: true, FoundInLocationID: "harbor", FoundAtTurn: 1,
+	}))
 	require.NoError(t, s.Repo().UpdateSaveProgress(ctx, id, "harbor", 0))
 	return s, id
 }
@@ -57,6 +71,9 @@ func TestModel_OpeningRendered(t *testing.T) {
 	v := m.View()
 	assert.Contains(t, v, "开场白")
 	assert.Contains(t, v, "Whisperer")
+	assert.Contains(t, v, "任务简报")
+	assert.Contains(t, v, "行动流")
+	assert.Contains(t, v, "案件卡")
 }
 
 func TestModel_SnapshotMsgPopulatesState(t *testing.T) {
@@ -69,6 +86,8 @@ func TestModel_SnapshotMsgPopulatesState(t *testing.T) {
 	mm := updated.(Model)
 	assert.Equal(t, "Lyra", mm.inv.Name)
 	assert.Equal(t, "雾港", mm.location.Name)
+	assert.Len(t, mm.npcs, 2)
+	assert.Len(t, mm.clues, 1)
 	assert.Equal(t, store.TimeMorning, mm.save.TimeOfDay)
 }
 
@@ -205,6 +224,97 @@ func TestModel_WindowResize(t *testing.T) {
 	assert.Equal(t, 40, mm.height)
 }
 
+func TestModel_ViewKeepsTerminalHeightWithLongHistory(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	m = updated.(Model)
+	m.width = 82
+	m.height = 18
+	for i := 0; i < 30; i++ {
+		m.log = append(m.log,
+			logEntry{kind: EntryPlayer, text: "我继续调查码头仓库里一段很长很长很长的描述，用来模拟玩家连续输入命令。"},
+			logEntry{kind: EntryGM, text: "GM 返回一段很长很长很长的叙事文本，包含状态、地点、线索和后续行动建议。"},
+			logEntry{kind: EntryError, text: "模型调用失败: 这是一段很长很长很长的错误信息，不能把右侧面板撑破。"},
+		)
+	}
+
+	v := m.View()
+
+	assert.LessOrEqual(t, lipgloss.Height(v), 18)
+	for _, line := range strings.Split(v, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 82)
+	}
+}
+
+func TestModel_ViewCollapsesNarrativeHistory(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	m.width = 100
+	m.height = 28
+	for i := 0; i < 18; i++ {
+		m.log = append(m.log, logEntry{kind: EntryGM, text: "叙事段落"})
+	}
+
+	v := m.View()
+
+	assert.Contains(t, v, "之前 4 条行动已折叠")
+}
+
+func TestModel_ViewSummarizesProviderErrors(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	m.width = 100
+	m.height = 28
+	raw := `回合失败: gm respond: agent: LLM call failed at iter 1: POST "https://api.anthropic.com/v1/messages": 401 Unauthorized {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CbFaau68bKZM"}`
+	m.log = append(m.log, logEntry{kind: EntryError, text: raw})
+
+	v := m.View()
+	summary := summarizeError(raw)
+
+	assert.Contains(t, summary, "模型调用失败")
+	assert.Contains(t, summary, "401 Unauthorized")
+	assert.Contains(t, summary, "invalid x-api-key")
+	assert.NotContains(t, v, "https://api.anthropic.com")
+}
+
+func TestModel_ViewUsesWorkbenchLayoutWithCaseRail(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	m = updated.(Model)
+	m.width = 120
+	m.height = 30
+	m.input.SetValue("/talk ")
+
+	v := m.View()
+
+	assert.Contains(t, v, "case:fh")
+	assert.Contains(t, v, "任务简报")
+	assert.Contains(t, v, "建议行动")
+	assert.Contains(t, v, "行动流")
+	assert.Contains(t, v, "案件卡")
+	assert.Contains(t, v, "LOCATION")
+	assert.Contains(t, v, "TARGETS")
+	assert.Contains(t, v, "/talk vance")
+	assert.Contains(t, v, "Tab 补全目标")
+}
+
+func TestModel_ViewHidesCommandHintOnShortScreens(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	m.width = 36
+	m.height = 10
+
+	v := m.View()
+
+	assert.LessOrEqual(t, lipgloss.Height(v), 10)
+	assert.NotContains(t, v, "Enter 发送")
+	for _, line := range strings.Split(v, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 36)
+	}
+}
+
 func TestModel_TimeCommand(t *testing.T) {
 	st, id := newTestStore(t)
 	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
@@ -257,4 +367,48 @@ func TestModel_QuitCommand(t *testing.T) {
 	mm := updated.(Model)
 	assert.True(t, mm.quitting)
 	assert.Contains(t, mm.View(), "已退出")
+}
+
+func TestModel_TabCompletesCommand(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	m.input.SetValue("/hi")
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	mm := updated.(Model)
+
+	assert.Equal(t, "/hint", mm.input.Value())
+}
+
+func TestModel_TabCompletesTalkNPC(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	mm := updated.(Model)
+	mm.input.SetValue("/talk va")
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab})
+	mm = updated.(Model)
+
+	assert.Equal(t, "/talk vance", mm.input.Value())
+}
+
+func TestModel_TabCyclesTalkNPCs(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	mm := updated.(Model)
+	mm.input.SetValue("/talk v")
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab})
+	mm = updated.(Model)
+	first := mm.input.Value()
+	mm.input.SetValue("/talk v")
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab})
+	mm = updated.(Model)
+	second := mm.input.Value()
+
+	assert.NotEqual(t, first, second)
+	assert.Contains(t, []string{first, second}, "/talk vance")
+	assert.Contains(t, []string{first, second}, "/talk villager")
 }

@@ -31,7 +31,7 @@ other = "未填写 API key。下次运行时请确保 {{.EnvVar}} 已设，否�
 [wizard.choose_scenario]
 other = "3) 默认剧本 ID（默认 fog_harbor）"
 [wizard.choose_scenario_invalid]
-other = "未识别的剧本 {{.Choice}}：内置剧本只有 fog_harbor；自定义剧本放在 {{.HotloadDir}}。"
+other = "未识别的剧本 {{.Choice}}：内置剧本只有 fog_harbor。"
 
 [wizard.choose_lang]
 other = "4) UI 语言 [zh-CN / en / auto]（默认 auto，按 $LANG 自动检测）"
@@ -59,7 +59,7 @@ other = "你的账户不被允许使用模型 {{.Model}}。换一个模型（--m
 [error.save_not_found]
 other = "存档 {{.SaveID}} 不存在。用 `whisperer saves list` 查看可用存档。"
 [error.scenario_not_found]
-other = "剧本 {{.Scenario}} 不存在。内置剧本：{{.Builtin}}。自定义剧本可放在 {{.HotloadDir}}。"
+other = "剧本 {{.Scenario}} 不存在。内置剧本：{{.Builtin}}。"
 [error.config_invalid]
 other = "配置文件 {{.Path}} 解析失败：{{.Reason}}。参考 docs/example-config.toml 修正。"
 [error.unknown]

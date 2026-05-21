@@ -94,7 +94,8 @@ func TestView_BusyState(t *testing.T) {
 	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
 	m.busy = true
 	v := m.View()
-	assert.Contains(t, v, "等待 GM")
+	assert.Contains(t, v, "THINKING")
+	assert.Contains(t, v, "GM 正在推演回合")
 }
 
 // helpers --------------------------------------------------------------

@@ -164,8 +164,6 @@ type Model struct {
 
 | 命令 | 行为 |
 |---|---|
-| `/save <name>` | 调 `orch.SaveAs`（重命名 + commit autosave） |
-| `/load <name>` | 推迟到 W7：MVP 只支持启动时 `--save` |
 | `/sheet` | 渲染调查员属性/技能 |
 | `/inventory` | 渲染背包 |
 | `/quit` | 退出 |
@@ -205,5 +203,5 @@ flags:
 
 ## Open Questions
 
-- ⏳ TUI `/load` 跨进程切 save 的复杂度；MVP 仅 CLI 起 / 单 save
+- ⏳ TUI 跨进程切 save 的复杂度；MVP 仅 CLI 起 / 单 save
 - ⏳ 多调查员 / 绑定新调查员（需求文档 F6.4）实现路径——orchestrator 增加 `BindNewInvestigator(saveID, inv)` API，TUI 在 ending 页提供选项；W6 之后第一个 follow-up

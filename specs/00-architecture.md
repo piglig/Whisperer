@@ -74,7 +74,7 @@ TurnInput
 | 实体状态 | SQLite | tool 调用同步 |
 | 事件流水 | SQLite events 表 | 每 tool + 每回合 |
 | 事件向量 | chromem-go 持久化目录 | 回合结束异步 |
-| 存档元数据 | SQLite saves 表 | autosave + `/save` |
+| 存档元数据 | SQLite saves 表 | autosave + 启动时 `--save` |
 | LLM 调用日志 | JSONL `runs/<save_id>/turns.jsonl` | 每回合 |
 
 存档由 `save_id` 关联三处持久化资源。

@@ -23,11 +23,11 @@ func TestParseSlash_NoArg(t *testing.T) {
 }
 
 func TestParseSlash_GenericArg(t *testing.T) {
-	c, ok := parseSlash("/save my-game")
+	c, ok := parseSlash("/bind lyra")
 	assert.True(t, ok)
-	assert.Equal(t, "save", c.name)
-	assert.Equal(t, "my-game", c.arg)
-	assert.Equal(t, "my-game", c.rest)
+	assert.Equal(t, "bind", c.name)
+	assert.Equal(t, "lyra", c.arg)
+	assert.Equal(t, "lyra", c.rest)
 }
 
 func TestParseSlash_TalkSplitsNPCAndRest(t *testing.T) {

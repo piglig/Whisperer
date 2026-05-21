@@ -232,12 +232,36 @@ func TestRunTurn_SLARetry(t *testing.T) {
 	assert.Contains(t, res.Narrative, "推门进入")
 }
 
+func TestRunTurn_SLARetryRollsBackFailedAttemptWrites(t *testing.T) {
+	llm := &fakeLLM{scripts: []string{
+		msgWith("tool_use",
+			textBlk("你成功抵达酒馆。"),
+			toolUseBlk("tu1", "transition_location", map[string]any{
+				"location_id": "pub",
+			}),
+		),
+		msgWith("end_turn", textBlk("你成功抵达酒馆。")),
+		msgWith("end_turn", textBlk("你留在原地，重新观察门缝。")),
+	}}
+	o, st, saveID, ctx := newOrchestrator(t, llm)
+	o.cfg.MaxSLARetries = 1
+
+	res, err := o.RunTurn(ctx, "去酒馆")
+	require.NoError(t, err)
+	require.True(t, res.SLAReport.Passed)
+	assert.Contains(t, res.Narrative, "重新观察")
+
+	sv, err := st.Repo().GetSave(ctx, saveID)
+	require.NoError(t, err)
+	assert.Equal(t, "harbor", sv.CurrentLocationID, "failed SLA attempt transition must be rolled back")
+}
+
 func TestRunTurn_SLAFallback(t *testing.T) {
 	// 一直违规 → 用尽重试 → 接受最后一次输出，Passed=false
 	llm := &fakeLLM{scripts: []string{
 		msgWith("end_turn", textBlk("你成功推开了门。")),
 		msgWith("end_turn", textBlk("你成功扭开锁芯。")),
-		msgWith("end_turn", textBlk("你顺利通过。")),
+		msgWith("end_turn", textBlk("你成功通过。")),
 	}}
 	o, _, _, ctx := newOrchestrator(t, llm)
 	o.cfg.MaxSLARetries = 2

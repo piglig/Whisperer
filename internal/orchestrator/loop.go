@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/store"
 	"github.com/zhuzhenwu/whisperer/internal/telemetry"
 )
+
+var errSLAAttemptFailed = errors.New("sla attempt failed")
 
 // TurnResult 是 RunTurn 的结构化输出。TUI / CLI 据此渲染。
 type TurnResult struct {
@@ -68,37 +71,44 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		finalSave  store.Save
 	)
 
-	txErr := o.cfg.Store.RunTurn(ctx, func(ctx context.Context, repo *store.Repository) error {
-		dispatcher := tools.New(repo, o.cfg.SaveID, turnNumber, o.cfg.RNG)
-		if o.cfg.Memory != nil {
-			dispatcher.WithMemory(o.cfg.Memory)
-		}
-		if o.cfg.LLMNPC != nil {
-			dispatcher.WithNPCAgent(agent.NewNPC(o.cfg.LLMNPC, o.cfg.ModelNPC))
-		}
-		dispatcher.WithScenario(o.cfg.Scenario)
+	maxAttempts := o.cfg.MaxSLARetries + 1
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	attemptInput := userInput
 
-		gm, err := agent.New(agent.Config{
-			LLM:          o.cfg.LLMGM,
-			Model:        o.cfg.ModelGM,
-			SystemPrompt: systemPrompt,
-			Tools:        dispatcher.Tools(),
-			Handler:      dispatcher.Dispatch,
-		})
-		if err != nil {
-			return fmt.Errorf("build gm agent: %w", err)
-		}
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		isLastAttempt := attempt == maxAttempts
+		txErr := o.cfg.Store.RunTurn(ctx, func(ctx context.Context, repo *store.Repository) error {
+			dispatcher := tools.New(repo, o.cfg.SaveID, turnNumber, o.cfg.RNG)
+			if o.cfg.Memory != nil {
+				dispatcher.WithMemory(o.cfg.Memory)
+			}
+			if o.cfg.LLMNPC != nil {
+				dispatcher.WithNPCAgent(agent.NewNPC(o.cfg.LLMNPC, o.cfg.ModelNPC))
+			}
+			dispatcher.WithScenario(o.cfg.Scenario)
 
-		// 第一次生成。
-		t, hist, err := gm.Respond(ctx, o.history, userInput)
-		if err != nil {
-			return fmt.Errorf("gm respond: %w", err)
-		}
-		trace, newHistory = t, hist
+			gm, err := agent.New(agent.Config{
+				LLM:          o.cfg.LLMGM,
+				Model:        o.cfg.ModelGM,
+				SystemPrompt: systemPrompt,
+				Tools:        dispatcher.Tools(),
+				Handler:      dispatcher.Dispatch,
+			})
+			if err != nil {
+				return fmt.Errorf("build gm agent: %w", err)
+			}
 
-		// 结构化 SLA：基于 Tx 内最新快照检查；违规 → 让 LLM 重写文本（不 rollback）。
-		// 启用 Judge 时同步跑 LLM-as-judge（SLA #3 #7）。
-		for retry := 0; retry < o.cfg.MaxSLARetries; retry++ {
+			t, hist, err := gm.Respond(ctx, o.history, attemptInput)
+			if err != nil {
+				return fmt.Errorf("gm respond: %w", err)
+			}
+			trace, newHistory = t, hist
+
+			// 结构化 SLA：基于 Tx 内最新快照检查；违规 → 回滚本次 attempt，
+			// 下一次把违规说明注入 user input 重新生成，避免保留失败 attempt 的 tool 写入。
+			// 启用 Judge 时同步跑 LLM-as-judge（SLA #3 #7）。
 			snap, err := snapshotForSLA(ctx, repo, o.cfg.SaveID)
 			if err != nil {
 				return fmt.Errorf("sla snapshot: %w", err)
@@ -113,86 +123,80 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 			} else {
 				report = validator.Check(trace)
 			}
-			if report.Passed {
-				break
+			if !report.Passed && !isLastAttempt {
+				attemptInput = userInput + "\n\n" + buildSLAFeedback(report)
+				return errSLAAttemptFailed
 			}
-			// 把违规说明追加到 user-side 当作"GM 反馈"，要求 LLM 重写本回合 narrative。
-			feedback := buildSLAFeedback(report)
-			t, hist, err := gm.Respond(ctx, newHistory, feedback)
+
+			// 触发器 + drift + endings 仍在同 Tx 内执行。注意：必须用 tx-scoped repo，
+			// 否则会与外层 Tx 抢同一条 SQLite 连接（SetMaxOpenConns(1)）→ 死锁。
+			txEngine := scenario.New(o.cfg.Scenario, repo, o.cfg.Memory)
+			txDetector := scenario.NewDetector(o.cfg.Scenario, repo)
+
+			fired, err := txEngine.Evaluate(ctx, o.cfg.SaveID)
 			if err != nil {
-				return fmt.Errorf("gm respond (sla retry %d): %w", retry+1, err)
+				return fmt.Errorf("trigger evaluate: %w", err)
 			}
-			trace, newHistory = t, hist
-		}
-		if !report.Passed {
-			// 仍未通过 → 接受最后一次输出，标记降级。orchestrator 上层可据此 logging。
-			report.Passed = false
-		}
+			firedList = fired
 
-		// 触发器 + drift + endings 仍在同 Tx 内执行。注意：必须用 tx-scoped repo，
-		// 否则会与外层 Tx 抢同一条 SQLite 连接（SetMaxOpenConns(1)）→ 死锁。
-		txEngine := scenario.New(o.cfg.Scenario, repo, o.cfg.Memory)
-		txDetector := scenario.NewDetector(o.cfg.Scenario, repo)
-
-		fired, err := txEngine.Evaluate(ctx, o.cfg.SaveID)
-		if err != nil {
-			return fmt.Errorf("trigger evaluate: %w", err)
-		}
-		firedList = fired
-
-		// 落 GM 主回合 narrative 为一条 narrative event（便于复盘 + drift 兜底）。
-		if trace.Narrative != "" {
-			_, _ = repo.AppendEvent(ctx, store.Event{
-				SaveID:      o.cfg.SaveID,
-				Turn:        turnNumber,
-				Type:        store.EventNarrative,
-				Description: trace.Narrative,
-			})
-		}
-
-		// 推进 turn count。
-		//
-		// 关键：必须先读 Tx 内最新的 save 状态再 UpdateSaveProgress——dispatcher 可能在
-		// LLM 工具循环里调过 transition_location，把 current_location_id 改到新地点。
-		// 直接用 preSave.CurrentLocationID 会把刚写入的新 location 覆盖回去（W6 真实
-		// e2e 暴露的 bug）。
-		curSave, err := repo.GetSave(ctx, o.cfg.SaveID)
-		if err != nil {
-			return fmt.Errorf("re-read save before advance: %w", err)
-		}
-		if err := repo.UpdateSaveProgress(ctx, o.cfg.SaveID, curSave.CurrentLocationID, turnNumber); err != nil {
-			return fmt.Errorf("advance turn: %w", err)
-		}
-
-		// drift / ending
-		dst, err := txDetector.Tick(ctx, o.cfg.SaveID, turnNumber)
-		if err != nil {
-			return fmt.Errorf("drift tick: %w", err)
-		}
-		drift = dst
-
-		end, err := txEngine.CheckEndings(ctx, o.cfg.SaveID)
-		if err != nil {
-			return fmt.Errorf("check endings: %w", err)
-		}
-		// SLA #8 强制收束：投查员死亡 / SAN=0 → 用 fallback ending。
-		if end == nil && report.EndingForced {
-			end = &scenario.Ending{
-				ID:          "investigator_lost",
-				Kind:        "failure",
-				Description: "调查员意识断裂——再无法继续追查这桩谜团。",
+			// 落 GM 主回合 narrative 为一条 narrative event（便于复盘 + drift 兜底）。
+			if trace.Narrative != "" {
+				_, _ = repo.AppendEvent(ctx, store.Event{
+					SaveID:      o.cfg.SaveID,
+					Turn:        turnNumber,
+					Type:        store.EventNarrative,
+					Description: trace.Narrative,
+				})
 			}
-		}
-		ending = end
 
-		sv, err := repo.GetSave(ctx, o.cfg.SaveID)
-		if err != nil {
-			return fmt.Errorf("re-read save: %w", err)
+			// 推进 turn count。
+			//
+			// 关键：必须先读 Tx 内最新的 save 状态再 UpdateSaveProgress——dispatcher 可能在
+			// LLM 工具循环里调过 transition_location，把 current_location_id 改到新地点。
+			// 直接用 preSave.CurrentLocationID 会把刚写入的新 location 覆盖回去（W6 真实
+			// e2e 暴露的 bug）。
+			curSave, err := repo.GetSave(ctx, o.cfg.SaveID)
+			if err != nil {
+				return fmt.Errorf("re-read save before advance: %w", err)
+			}
+			if err := repo.UpdateSaveProgress(ctx, o.cfg.SaveID, curSave.CurrentLocationID, turnNumber); err != nil {
+				return fmt.Errorf("advance turn: %w", err)
+			}
+
+			// drift / ending
+			dst, err := txDetector.Tick(ctx, o.cfg.SaveID, turnNumber)
+			if err != nil {
+				return fmt.Errorf("drift tick: %w", err)
+			}
+			drift = dst
+
+			end, err := txEngine.CheckEndings(ctx, o.cfg.SaveID)
+			if err != nil {
+				return fmt.Errorf("check endings: %w", err)
+			}
+			// SLA #8 强制收束：投查员死亡 / SAN=0 → 用 fallback ending。
+			if end == nil && report.EndingForced {
+				end = &scenario.Ending{
+					ID:          "investigator_lost",
+					Kind:        "failure",
+					Description: "调查员意识断裂——再无法继续追查这桩谜团。",
+				}
+			}
+			ending = end
+
+			sv, err := repo.GetSave(ctx, o.cfg.SaveID)
+			if err != nil {
+				return fmt.Errorf("re-read save: %w", err)
+			}
+			finalSave = sv
+			return nil
+		})
+		if txErr == nil {
+			break
 		}
-		finalSave = sv
-		return nil
-	})
-	if txErr != nil {
+		if errors.Is(txErr, errSLAAttemptFailed) {
+			continue
+		}
 		span.SetStatus(codes.Error, "turn tx failed")
 		span.RecordError(txErr)
 		return TurnResult{}, txErr

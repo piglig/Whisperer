@@ -3,7 +3,7 @@
 ## Goals
 
 - 给 orchestrator / agent 提供一套 thin、强类型的状态读写 API
-- 单 SQLite 文件即一个 save，零依赖、单文件存档
+- 单 SQLite 文件保存多个 save，运行时只依赖 `database/sql` + SQLite driver
 - 提供 turn-scoped 事务接口，配合 SLA 校验失败时整回合回滚
 - 单测覆盖 ≥ 85%（用 `:memory:` 库）
 
@@ -12,13 +12,14 @@
 - 不做向量检索（W4 的 memory 包负责）
 - 不做剧本数据加载（W5 的 scenario 包负责）
 - 不做并发写：MVP 单玩家、单进程，SQLite 默认 WAL 即可
-- 不引入 sqlc / 迁移框架（详见下方 ADR 注记）
+- 不引入 ORM；查询生成只用于稳定的高频 CRUD
 
-## sqlc 推迟（与 plan 不同）
+## sqlc
 
-- 原计划用 sqlc 生成 type-safe 查询，开发阶段决定推迟
-- 理由：schema 在 W2 之后还会随 NPC 子代理、剧本触发器演化；每次 schema 变更都要重跑 sqlc 并重审生成代码，节奏负担高于 type-safety 收益
-- 选择 W2 用标准库 `database/sql` + 手写 thin repository（约 1 文件 300 行），schema 稳定后（≥ W5）再评估
+- W2 曾推迟 sqlc；现在 repository 已超过 ADR 0002 的重新评估阈值
+- `internal/store/queries/*.sql` + `internal/store/storesqlc` 覆盖全部 store 表
+- `Repository` 仍是上层唯一 API，负责领域模型转换、错误映射和少量业务默认值
+- 生成命令：`make sqlc`
 - 决策记录：`specs/adr/0002-defer-sqlc.md`
 
 ## Schema（`internal/store/schema.sql`，embed）

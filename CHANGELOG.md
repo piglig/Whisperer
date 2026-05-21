@@ -91,8 +91,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `internal/orchestrator` — turn loop, four structural SLA validators,
   optional Haiku LLM-as-judge for SLA #3 (NPC consistency) and #7 (knowledge
   projection).
-- `internal/tui` — bubbletea terminal UI with `/save`, `/load`, `/bind`,
-  `/hint` slash commands.
+- `internal/tui` — bubbletea terminal UI with `/bind`, `/hint`, `/talk`, and
+  `/all` slash commands.
 - W7 polish: complete impale rules, multi-investigator binding, autosave
   checkpoint events.
 - `cmd/whisperer` CLI + `cmd/e2esmoke` real-LLM end-to-end harness.

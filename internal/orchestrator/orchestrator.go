@@ -131,7 +131,7 @@ func (o *Orchestrator) History() []anthropic.MessageParam {
 	return out
 }
 
-// ResetHistory 清空对话历史。供 /load 等场景使用。
+// ResetHistory 清空对话历史。供调查员切换等场景使用。
 func (o *Orchestrator) ResetHistory() { o.history = nil }
 
 // VariantID 返回本局所选 variant id（可空）。

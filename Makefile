@@ -1,4 +1,4 @@
-.PHONY: build test cover lint tidy record-cassettes
+.PHONY: build test cover lint tidy sqlc record-cassettes
 
 GO ?= go
 COVER_THRESHOLD ?= 85
@@ -21,6 +21,9 @@ lint:
 
 tidy:
 	$(GO) mod tidy
+
+sqlc:
+	$(GO) run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
 
 # 重录 LLM cassette。用真实 API key 跑一次，把 fixture 落到 testdata/cassettes/。
 # CI 跑回归一律走 ModeReplayOnly，永远不会触发录制。

@@ -94,8 +94,6 @@ export OPENROUTER_API_KEY=sk-or-...
 
 | 命令 | 作用 |
 |---|---|
-| `/save` | 把当前进度记录到 SQLite |
-| `/load <id>` | 切换到另一份存档 |
 | `/talk <NPC>` | 显式指定 NPC 对话 |
 | `/all <话>` | 对全场说 |
 | `/hint` | 卡住时让 GM 给环境/NPC 暗示（不剧透） |
