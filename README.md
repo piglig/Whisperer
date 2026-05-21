@@ -57,19 +57,31 @@ go build -o whisperer ./cmd/whisperer
 
 ### LLM provider
 
-支持 Anthropic 官方与 OpenRouter（Anthropic 兼容端点）：
+支持 Anthropic、OpenRouter、OpenAI、Grok、Gemini：
 
 ```bash
-# 官方
+# Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 ./whisperer
 
 # OpenRouter
 export OPENROUTER_API_KEY=sk-or-...
 ./whisperer --provider openrouter
+
+# OpenAI
+export OPENAI_API_KEY=sk-...
+./whisperer --provider openai
+
+# Grok / xAI
+export XAI_API_KEY=xai-...
+./whisperer --provider grok
+
+# Gemini
+export GEMINI_API_KEY=...
+./whisperer --provider gemini
 ```
 
-`--provider` 不指定时自动探测：仅 OpenRouter key 走 OpenRouter，否则官方。
+`--provider` 不指定时自动探测：仅存在一个 provider key 时自动选择；多个或都没有时默认 Anthropic。
 `--api-key <k>` 显式覆盖。
 
 ---
@@ -152,7 +164,7 @@ Whisperer/
 ├── internal/
 │   ├── rules/                    纯函数规则引擎
 │   ├── store/                    SQLite + repository
-│   ├── agent/                    Anthropic SDK + GM/NPC agent + prompts
+│   ├── agent/                    LLM SDK adapters + GM/NPC agent + prompts
 │   ├── memory/                   chromem-go 三集合
 │   ├── scenario/                 YAML 剧本 + 触发器 + variant + meta
 │   ├── orchestrator/             回合主循环 + tools + SLA + judge

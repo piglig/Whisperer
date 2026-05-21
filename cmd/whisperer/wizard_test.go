@@ -108,12 +108,24 @@ func TestRunWizard_RetriesOnInvalidProvider(t *testing.T) {
 	configPath := filepath.Join(dir, "config.toml")
 
 	// 第一次 garbage，第二次 anthropic
-	env, out := newTestEnv(t, "openai\nanthropic\nsk\nfog_harbor\nauto\ny\n")
+	env, out := newTestEnv(t, "garbage\nanthropic\nsk\nfog_harbor\nauto\ny\n")
 	written, result, err := runWizard(env, configPath)
 	require.NoError(t, err)
 	assert.True(t, written)
 	assert.Equal(t, "anthropic", result.Provider)
 	assert.Contains(t, out.String(), "Invalid choice")
+}
+
+func TestRunWizard_OpenAIProvider(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+
+	env, _ := newTestEnv(t, "openai\nsk-test\nfog_harbor\nauto\ny\n")
+	written, result, err := runWizard(env, configPath)
+	require.NoError(t, err)
+	assert.True(t, written)
+	assert.Equal(t, "openai", result.Provider)
+	assert.Equal(t, "OPENAI_API_KEY", result.APIKeyEnv)
 }
 
 func TestShouldRunWizard(t *testing.T) {

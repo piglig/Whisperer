@@ -19,9 +19,9 @@ other = "Whisperer 首次运行向导"
 other = "回答几个问题，把你的偏好保存到 {{.Path}}。任何时候可以编辑或删除该文件。"
 
 [wizard.choose_provider]
-other = "1) 选择 LLM provider [anthropic / openrouter]（默认 anthropic）"
+other = "1) 选择 LLM provider [anthropic / openrouter / openai / grok / gemini]（默认 anthropic）"
 [wizard.choose_provider_invalid]
-other = "无效选择 {{.Choice}}：只接受 anthropic / openrouter / 回车默认。"
+other = "无效选择 {{.Choice}}：只接受 anthropic / openrouter / openai / grok / gemini / 回车默认。"
 
 [wizard.api_key_prompt]
 other = "2) 你的 {{.EnvVar}}（API key）。回车跳过——稍后通过环境变量提供也行。"

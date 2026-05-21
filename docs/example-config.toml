@@ -11,12 +11,13 @@
 #
 # !!  API key 不写在这里。  !!
 # 出于安全考虑，本文件不接受 api_key 字段。请用环境变量：
-#   ANTHROPIC_API_KEY  / OPENROUTER_API_KEY  / EMBEDDER_API_KEY
+#   ANTHROPIC_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY /
+#   XAI_API_KEY / GEMINI_API_KEY / EMBEDDER_API_KEY
 # 或者 CLI flag `--api-key` / `--embedder-key`。
 # 这样 config 文件可以放心提交到 dotfiles 仓库。
 
 # ---- LLM provider ----
-provider = "anthropic"                                  # anthropic | openrouter
+provider = "anthropic"                                  # anthropic | openrouter | openai | grok | gemini
 # model        = "claude-sonnet-4-7-20260101"          # GM 模型；不填走 SDK 内置常量
 # model_helper = "claude-haiku-4-5"                    # NPC / judge 子代理模型
 

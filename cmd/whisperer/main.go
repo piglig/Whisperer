@@ -10,6 +10,15 @@
 //	export OPENROUTER_API_KEY=sk-or-...
 //	whisperer --provider openrouter
 //
+// 用法（OpenAI / Grok / Gemini）:
+//
+//	export OPENAI_API_KEY=sk-...
+//	whisperer --provider openai
+//	export XAI_API_KEY=xai-...
+//	whisperer --provider grok
+//	export GEMINI_API_KEY=...
+//	whisperer --provider gemini
+//
 // 缺省加载内置 fog_harbor 剧本，自动创建 save 与一名占位调查员。
 package main
 
@@ -21,7 +30,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -39,11 +47,6 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/store"
 	"github.com/zhuzhenwu/whisperer/internal/telemetry"
 	"github.com/zhuzhenwu/whisperer/internal/tui"
-)
-
-const (
-	providerAnthropic  = "anthropic"
-	providerOpenRouter = "openrouter"
 )
 
 // globalTranslator 在 main 解析完 --lang 后注入；fail() 取它做 i18n 渲染。
@@ -95,8 +98,8 @@ func main() {
 	memDir := flag.String("memory", orDefault(fileCfg.MemDir, "mem"), "memory persistent dir; empty for in-memory")
 	scenarioID := flag.String("scenario", orDefault(fileCfg.Scenario, "fog_harbor"), "bundled scenario id")
 	saveID := flag.String("save", fileCfg.Save, "existing save id to load; empty creates a new save")
-	provider := flag.String("provider", orDefault(fileCfg.Provider, autoProvider()), "LLM provider: anthropic | openrouter")
-	apiKey := flag.String("api-key", "", "API key (overrides env). Anthropic→ANTHROPIC_API_KEY, OpenRouter→OPENROUTER_API_KEY")
+	provider := flag.String("provider", orDefault(fileCfg.Provider, agent.AutoProvider()), "LLM provider: anthropic | openrouter | openai | grok | gemini")
+	apiKey := flag.String("api-key", "", "API key (overrides provider env var)")
 	modelOverride := flag.String("model", fileCfg.Model, "override GM model id (full vendor/model on OpenRouter)")
 	modelHelperOverride := flag.String("model-helper", fileCfg.ModelHelper, "override Haiku/helper model id")
 	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
@@ -137,7 +140,7 @@ func main() {
 	if resolvedKey == "" {
 		slog.Error("no API key found",
 			"provider", *provider,
-			"env_var", envKeyName(*provider),
+			"env_var", agent.ProviderInfo(*provider).EnvKey,
 			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
@@ -220,7 +223,7 @@ func main() {
 		}
 	}
 
-	llm, modelGM, modelNPC := buildLLM(*provider, resolvedKey, *llmMaxRetries, *llmTimeout)
+	llm, modelGM, modelNPC := agent.BuildLLM(*provider, resolvedKey, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
 		modelGM = anthropic.Model(*modelOverride)
 	}
@@ -259,63 +262,11 @@ func runSmoke() {
 	slog.Info("smoke check passed", "llm_called", false)
 }
 
-// autoProvider 探测环境变量决定默认 provider。
-//   - 仅 ANTHROPIC_API_KEY → anthropic
-//   - 仅 OPENROUTER_API_KEY → openrouter
-//   - 都有 / 都没有 → anthropic（保守默认；用户可显式 --provider openrouter 覆盖）
-func autoProvider() string {
-	hasAnthropic := os.Getenv("ANTHROPIC_API_KEY") != ""
-	hasOpenRouter := os.Getenv("OPENROUTER_API_KEY") != ""
-	if !hasAnthropic && hasOpenRouter {
-		return providerOpenRouter
-	}
-	return providerAnthropic
-}
-
-func envKeyName(provider string) string {
-	if normalizedProvider(provider) == providerOpenRouter {
-		return "OPENROUTER_API_KEY"
-	}
-	return "ANTHROPIC_API_KEY"
-}
-
 func resolveKey(provider, override string) string {
 	if override != "" {
 		return override
 	}
-	return os.Getenv(envKeyName(provider))
-}
-
-func normalizedProvider(p string) string {
-	switch strings.ToLower(strings.TrimSpace(p)) {
-	case providerOpenRouter, "or":
-		return providerOpenRouter
-	default:
-		return providerAnthropic
-	}
-}
-
-// buildLLM 根据 provider 构造 Anthropic 客户端 + 选择模型常量。
-func buildLLM(provider, key string, maxRetries int, timeout time.Duration) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
-	switch normalizedProvider(provider) {
-	case providerOpenRouter:
-		return agent.NewAnthropic(agent.ClientConfig{
-				AuthToken:      key,
-				BaseURL:        agent.OpenRouterBaseURL,
-				MaxRetries:     maxRetries,
-				RequestTimeout: timeout,
-			}),
-			agent.OpenRouterModelGM,
-			agent.OpenRouterModelHelper
-	default:
-		return agent.NewAnthropic(agent.ClientConfig{
-				APIKey:         key,
-				BaseURL:        agent.AnthropicBaseURL, // 显式指定，避免 SDK 读取用户环境里的 ANTHROPIC_BASE_URL
-				MaxRetries:     maxRetries,
-				RequestTimeout: timeout,
-			}),
-			agent.ModelGM, agent.ModelHelper
-	}
+	return os.Getenv(agent.ProviderInfo(provider).EnvKey)
 }
 
 // ensureSaveWithVariant 若 saveID 为空则创建新 save + 选定 variant；

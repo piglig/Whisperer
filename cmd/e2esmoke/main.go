@@ -4,6 +4,7 @@
 // 用法:
 //
 //	OPENROUTER_API_KEY=sk-or-... go run ./cmd/e2esmoke -input "我环顾码头四周"
+//	OPENAI_API_KEY=sk-... go run ./cmd/e2esmoke -provider openai
 //	ANTHROPIC_API_KEY=sk-ant-... go run ./cmd/e2esmoke -provider anthropic
 package main
 
@@ -31,7 +32,7 @@ import (
 )
 
 func main() {
-	provider := flag.String("provider", autoProvider(), "anthropic | openrouter")
+	provider := flag.String("provider", agent.AutoProvider(), "anthropic | openrouter | openai | grok | gemini")
 	apiKey := flag.String("api-key", "", "override; else read env")
 	input := flag.String("input", "我刚到雾港码头，先环顾四周，再向最近的人打听情况。", "user input for the first turn")
 	inputsFile := flag.String("inputs-file", "", "path to a file with one player input per line; supersedes --input/--turns. Empty lines and lines starting with # are skipped.")
@@ -54,12 +55,12 @@ func main() {
 
 	key := *apiKey
 	if key == "" {
-		key = os.Getenv(envName(*provider))
+		key = os.Getenv(agent.ProviderInfo(*provider).EnvKey)
 	}
 	if key == "" {
 		slog.Error("no API key found",
 			"provider", *provider,
-			"env_var", envName(*provider),
+			"env_var", agent.ProviderInfo(*provider).EnvKey,
 			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
@@ -119,7 +120,7 @@ func main() {
 	engine := scenario.New(scn, st.Repo(), mem)
 	must("scenario apply", engine.Apply(ctx, saveID))
 
-	llm, modelGM, modelNPC := buildLLM(*provider, key, *llmMaxRetries, *llmTimeout)
+	llm, modelGM, modelNPC := agent.BuildLLM(*provider, key, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
 		modelGM = anthropic.Model(*modelOverride)
 	}
@@ -267,51 +268,6 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
-}
-
-// 与 cmd/whisperer/main.go 同样的 provider 解析逻辑，独立避免循环依赖。
-
-func autoProvider() string {
-	if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") != "" {
-		return "openrouter"
-	}
-	return "anthropic"
-}
-
-func envName(p string) string {
-	if normalized(p) == "openrouter" {
-		return "OPENROUTER_API_KEY"
-	}
-	return "ANTHROPIC_API_KEY"
-}
-
-func normalized(p string) string {
-	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "openrouter", "or":
-		return "openrouter"
-	default:
-		return "anthropic"
-	}
-}
-
-func buildLLM(provider, key string, maxRetries int, timeout time.Duration) (*agent.Anthropic, anthropic.Model, anthropic.Model) {
-	if normalized(provider) == "openrouter" {
-		return agent.NewAnthropic(agent.ClientConfig{
-				AuthToken:      key,
-				BaseURL:        agent.OpenRouterBaseURL,
-				MaxRetries:     maxRetries,
-				RequestTimeout: timeout,
-			}),
-			agent.OpenRouterModelGM,
-			agent.OpenRouterModelHelper
-	}
-	return agent.NewAnthropic(agent.ClientConfig{
-			APIKey:         key,
-			BaseURL:        agent.AnthropicBaseURL,
-			MaxRetries:     maxRetries,
-			RequestTimeout: timeout,
-		}),
-		agent.ModelGM, agent.ModelHelper
 }
 
 func must(label string, err error) {

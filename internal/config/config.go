@@ -135,8 +135,9 @@ func (c *Config) parseDurations() error {
 //   - WHISPERER_LOG_FORMAT / WHISPERER_LOG_LEVEL
 //   - WHISPERER_EMBEDDER / WHISPERER_EMBEDDER_MODEL / WHISPERER_EMBEDDER_BASE_URL
 //
-// **API key 永远只通过 ANTHROPIC_API_KEY / OPENROUTER_API_KEY / EMBEDDER_API_KEY
-// 这几个独立变量传，不在这里覆盖**——保持密钥与一般配置的物理隔离。
+// **API key 永远只通过 provider 专属环境变量（如 ANTHROPIC_API_KEY /
+// OPENROUTER_API_KEY / OPENAI_API_KEY / XAI_API_KEY / GEMINI_API_KEY）或
+// EMBEDDER_API_KEY 传，不在这里覆盖**——保持密钥与一般配置的物理隔离。
 func (c *Config) EnvOverlay() {
 	envSet(&c.Provider, "WHISPERER_PROVIDER")
 	envSet(&c.Model, "WHISPERER_MODEL")

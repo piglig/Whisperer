@@ -12,9 +12,9 @@ other = "Whisperer first-run setup"
 other = "Answer a few questions and Whisperer will save your preferences to {{.Path}}. You can edit or delete that file at any time."
 
 [wizard.choose_provider]
-other = "1) Pick an LLM provider [anthropic / openrouter] (default: anthropic)"
+other = "1) Pick an LLM provider [anthropic / openrouter / openai / grok / gemini] (default: anthropic)"
 [wizard.choose_provider_invalid]
-other = "Invalid choice {{.Choice}}: pick anthropic, openrouter, or press Enter for the default."
+other = "Invalid choice {{.Choice}}: pick anthropic, openrouter, openai, grok, gemini, or press Enter for the default."
 
 [wizard.api_key_prompt]
 other = "2) Your {{.EnvVar}} (API key). Press Enter to skip — you can still set the env var later."

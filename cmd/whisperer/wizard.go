@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/config"
 	"github.com/zhuzhenwu/whisperer/internal/i18n"
 )
@@ -65,17 +66,13 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 			return false, result, err
 		}
 		choice = strings.ToLower(strings.TrimSpace(choice))
-		switch choice {
-		case "", "anthropic":
-			result.Provider = "anthropic"
-			result.APIKeyEnv = "ANTHROPIC_API_KEY"
-		case "openrouter", "or":
-			result.Provider = "openrouter"
-			result.APIKeyEnv = "OPENROUTER_API_KEY"
-		default:
+		spec, ok := agent.ParseProvider(choice)
+		if !ok {
 			env.println(tr.T("wizard.choose_provider_invalid", map[string]any{"Choice": choice}))
 			continue
 		}
+		result.Provider = spec.Name
+		result.APIKeyEnv = spec.EnvKey
 		break
 	}
 	env.println()
