@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -36,9 +35,9 @@ type ToolHandler func(ctx context.Context, name string, inputRaw json.RawMessage
 // GMAgent 是封装好的 GM tool-use 主循环。
 type GMAgent struct {
 	llm       LLM
-	model     anthropic.Model
-	system    []anthropic.TextBlockParam
-	tools     []anthropic.ToolUnionParam
+	model     Model
+	system    []SystemBlock
+	tools     []ToolDefinition
 	handler   ToolHandler
 	maxIter   int
 	maxTokens int64
@@ -47,9 +46,9 @@ type GMAgent struct {
 // Config 构造 GMAgent。零值字段会被填默认值。
 type Config struct {
 	LLM           LLM
-	Model         anthropic.Model
+	Model         Model
 	SystemPrompt  string // 普通字符串；内部包装为单个 TextBlockParam（带 cache_control）
-	Tools         []anthropic.ToolUnionParam
+	Tools         []ToolDefinition
 	Handler       ToolHandler
 	MaxIterations int
 	MaxTokens     int64
@@ -73,13 +72,10 @@ func New(cfg Config) (*GMAgent, error) {
 		cfg.MaxTokens = DefaultMaxTokens
 	}
 
-	system := []anthropic.TextBlockParam{}
+	system := []SystemBlock{}
 	if strings.TrimSpace(cfg.SystemPrompt) != "" {
 		// 给 system prompt 标 cache_control=ephemeral，单回合多次 LLM 调用复用缓存。
-		system = append(system, anthropic.TextBlockParam{
-			Text:         cfg.SystemPrompt,
-			CacheControl: anthropic.NewCacheControlEphemeralParam(),
-		})
+		system = append(system, SystemBlock{Text: cfg.SystemPrompt, CacheEphemeral: true})
 	}
 
 	return &GMAgent{
@@ -101,11 +97,11 @@ func New(cfg Config) (*GMAgent, error) {
 //   - error 仅在 LLM 调用失败或 handler 返回完全无法序列化的结果时
 func (g *GMAgent) Respond(
 	ctx context.Context,
-	history []anthropic.MessageParam,
+	history []MessageParam,
 	userInput string,
-) (TurnTrace, []anthropic.MessageParam, error) {
-	messages := append([]anthropic.MessageParam(nil), history...)
-	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(userInput)))
+) (TurnTrace, []MessageParam, error) {
+	messages := append([]MessageParam(nil), history...)
+	messages = append(messages, NewUserMessage(NewTextBlock(userInput)))
 
 	trace := TurnTrace{}
 	var narrativeBuilder strings.Builder
@@ -113,7 +109,7 @@ func (g *GMAgent) Respond(
 	for iter := 1; iter <= g.maxIter; iter++ {
 		trace.Iterations = iter
 
-		params := anthropic.MessageNewParams{
+		params := MessageRequest{
 			Model:     g.model,
 			MaxTokens: g.maxTokens,
 			System:    g.system,
@@ -151,18 +147,18 @@ func (g *GMAgent) Respond(
 		// 把本轮 assistant 输出加进对话。
 		messages = append(messages, msg.ToParam())
 
-		var toolResults []anthropic.ContentBlockParamUnion
+		var toolResults []ContentBlockParam
 
 		for _, block := range msg.Content {
-			switch b := block.AsAny().(type) {
-			case anthropic.TextBlock:
+			switch block.Type {
+			case "text":
 				if narrativeBuilder.Len() > 0 {
 					narrativeBuilder.WriteString("\n")
 				}
-				narrativeBuilder.WriteString(b.Text)
+				narrativeBuilder.WriteString(block.Text)
 
-			case anthropic.ToolUseBlock:
-				out, isErr := g.handler(ctx, b.Name, b.Input)
+			case "tool_use":
+				out, isErr := g.handler(ctx, block.Name, block.Input)
 				outBytes, mErr := json.Marshal(out)
 				if mErr != nil {
 					// handler 输出无法序列化 → 视为工具错误，让 LLM 看到。
@@ -171,15 +167,15 @@ func (g *GMAgent) Respond(
 				}
 
 				trace.ToolCalls = append(trace.ToolCalls, ToolCall{
-					ID:      b.ID,
-					Name:    b.Name,
-					Input:   append(json.RawMessage(nil), b.Input...),
+					ID:      block.ID,
+					Name:    block.Name,
+					Input:   append(json.RawMessage(nil), block.Input...),
 					Output:  append(json.RawMessage(nil), outBytes...),
 					IsError: isErr,
 					Iter:    iter,
 				})
 
-				toolResults = append(toolResults, anthropic.NewToolResultBlock(b.ID, string(outBytes), isErr))
+				toolResults = append(toolResults, NewToolResultBlock(block.ID, string(outBytes), isErr))
 			}
 		}
 
@@ -189,7 +185,7 @@ func (g *GMAgent) Respond(
 			return trace, messages, nil
 		}
 
-		messages = append(messages, anthropic.NewUserMessage(toolResults...))
+		messages = append(messages, NewUserMessage(toolResults...))
 	}
 
 	// 用尽迭代仍未结束。

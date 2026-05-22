@@ -19,7 +19,7 @@ type Repository struct {
 // nowMS 是 time.Now().UnixMilli() 的可注入版本。测试可临时替换以得到稳定时间。
 var nowMS = func() int64 { return time.Now().UnixMilli() }
 
-// boolToInt / intToBool 简化 SQLite 0/1 ↔ Go bool 转换。
+// boolToInt 简化 SQLite 0/1 ↔ Go bool 转换。
 func boolToInt(b bool) int {
 	if b {
 		return 1
@@ -39,6 +39,24 @@ func sqlNullInt64(i int) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(i), Valid: true}
+}
+
+func checkRowsAffected(n int64, err error) error {
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func mapRows[I, O any](rows []I, convert func(I) O) []O {
+	out := make([]O, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, convert(row))
+	}
+	return out
 }
 
 func mapErr(err error) error {
@@ -82,7 +100,7 @@ func (r *Repository) GetSave(ctx context.Context, id string) (Save, error) {
 	if err != nil {
 		return Save{}, mapErr(err)
 	}
-	return saveFromGetSaveRow(row), nil
+	return saveFromSQLC(row), nil
 }
 
 func (r *Repository) ListSaves(ctx context.Context) ([]Save, error) {
@@ -90,11 +108,7 @@ func (r *Repository) ListSaves(ctx context.Context) ([]Save, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Save, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, saveFromListSavesRow(row))
-	}
-	return out, nil
+	return mapRows(rows, saveFromSQLC), nil
 }
 
 // SetTimeOfDay 设置存档的当前时间段。值非法时返回错误。
@@ -102,62 +116,27 @@ func (r *Repository) SetTimeOfDay(ctx context.Context, id string, t TimeOfDay) e
 	if !t.IsValid() {
 		return fmt.Errorf("invalid time_of_day: %q", t)
 	}
-	n, err := storesqlc.New(r.q).SetTimeOfDay(ctx, storesqlc.SetTimeOfDayParams{
+	return checkRowsAffected(storesqlc.New(r.q).SetTimeOfDay(ctx, storesqlc.SetTimeOfDayParams{
 		TimeOfDay: string(t),
 		UpdatedAt: nowMS(),
 		ID:        id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
 func (r *Repository) DeleteSave(ctx context.Context, id string) error {
-	n, err := storesqlc.New(r.q).DeleteSave(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return checkRowsAffected(storesqlc.New(r.q).DeleteSave(ctx, id))
 }
 
 func (r *Repository) UpdateSaveProgress(ctx context.Context, id, locationID string, turn int) error {
-	n, err := storesqlc.New(r.q).UpdateSaveProgress(ctx, storesqlc.UpdateSaveProgressParams{
+	return checkRowsAffected(storesqlc.New(r.q).UpdateSaveProgress(ctx, storesqlc.UpdateSaveProgressParams{
 		CurrentLocationID: sqlNullString(locationID),
 		TurnCount:         int64(turn),
 		UpdatedAt:         nowMS(),
 		ID:                id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
-func saveFromGetSaveRow(s storesqlc.GetSaveRow) Save {
-	return Save{
-		ID:                s.ID,
-		Name:              s.Name,
-		ScenarioID:        s.ScenarioID,
-		VariantID:         s.VariantID,
-		CurrentLocationID: s.CurrentLocationID.String,
-		TurnCount:         int(s.TurnCount),
-		TimeOfDay:         TimeOfDay(s.TimeOfDay),
-		CreatedAt:         s.CreatedAt,
-		UpdatedAt:         s.UpdatedAt,
-	}
-}
-
-func saveFromListSavesRow(s storesqlc.ListSavesRow) Save {
+func saveFromSQLC(s storesqlc.Save) Save {
 	return Save{
 		ID:                s.ID,
 		Name:              s.Name,
@@ -200,19 +179,12 @@ func (r *Repository) GetActiveInvestigator(ctx context.Context, saveID string) (
 }
 
 func (r *Repository) UpdateInvestigatorVitals(ctx context.Context, id string, hp, mp, san int) error {
-	n, err := storesqlc.New(r.q).UpdateInvestigatorVitals(ctx, storesqlc.UpdateInvestigatorVitalsParams{
+	return checkRowsAffected(storesqlc.New(r.q).UpdateInvestigatorVitals(ctx, storesqlc.UpdateInvestigatorVitalsParams{
 		Hp:  int64(hp),
 		Mp:  int64(mp),
 		San: int64(san),
 		ID:  id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
 func (r *Repository) ListInvestigators(ctx context.Context, saveID string) ([]Investigator, error) {
@@ -220,22 +192,11 @@ func (r *Repository) ListInvestigators(ctx context.Context, saveID string) ([]In
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Investigator, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, investigatorFromSQLC(row))
-	}
-	return out, nil
+	return mapRows(rows, investigatorFromSQLC), nil
 }
 
 func (r *Repository) DeactivateInvestigator(ctx context.Context, id string) error {
-	n, err := storesqlc.New(r.q).DeactivateInvestigator(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return checkRowsAffected(storesqlc.New(r.q).DeactivateInvestigator(ctx, id))
 }
 
 func investigatorFromSQLC(inv storesqlc.Investigator) Investigator {
@@ -287,39 +248,21 @@ func (r *Repository) ListNPCsAtLocation(ctx context.Context, saveID, locationID 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]NPC, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, npcFromSQLC(row))
-	}
-	return out, nil
+	return mapRows(rows, npcFromSQLC), nil
 }
 
 func (r *Repository) UpdateNPCRelation(ctx context.Context, id string, delta int) error {
-	n, err := storesqlc.New(r.q).UpdateNPCRelation(ctx, storesqlc.UpdateNPCRelationParams{
+	return checkRowsAffected(storesqlc.New(r.q).UpdateNPCRelation(ctx, storesqlc.UpdateNPCRelationParams{
 		RelationToPlayer: int64(delta),
 		ID:               id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
 func (r *Repository) KillNPC(ctx context.Context, id string) error {
-	n, err := storesqlc.New(r.q).KillNPC(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return checkRowsAffected(storesqlc.New(r.q).KillNPC(ctx, id))
 }
 
-func npcFromSQLC(n storesqlc.Npc) NPC {
+func npcFromSQLC(n storesqlc.NPC) NPC {
 	return NPC{
 		ID:               n.ID,
 		SaveID:           n.SaveID,
@@ -357,14 +300,7 @@ func (r *Repository) GetLocation(ctx context.Context, id string) (Location, erro
 }
 
 func (r *Repository) MarkLocationVisited(ctx context.Context, id string) error {
-	n, err := storesqlc.New(r.q).MarkLocationVisited(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return checkRowsAffected(storesqlc.New(r.q).MarkLocationVisited(ctx, id))
 }
 
 func locationFromSQLC(l storesqlc.Location) Location {
@@ -408,29 +344,15 @@ func (r *Repository) GetItem(ctx context.Context, id string) (Item, error) {
 }
 
 func (r *Repository) MoveItem(ctx context.Context, id string, ownerType OwnerType, ownerID string) error {
-	n, err := storesqlc.New(r.q).MoveItem(ctx, storesqlc.MoveItemParams{
+	return checkRowsAffected(storesqlc.New(r.q).MoveItem(ctx, storesqlc.MoveItemParams{
 		OwnerType: string(ownerType),
 		OwnerID:   sqlNullString(ownerID),
 		ID:        id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
 func (r *Repository) DestroyItem(ctx context.Context, id string) error {
-	n, err := storesqlc.New(r.q).DestroyItem(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return checkRowsAffected(storesqlc.New(r.q).DestroyItem(ctx, id))
 }
 
 func (r *Repository) ListDestroyedItems(ctx context.Context, saveID string) ([]Item, error) {
@@ -438,11 +360,7 @@ func (r *Repository) ListDestroyedItems(ctx context.Context, saveID string) ([]I
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Item, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, itemFromSQLC(row))
-	}
-	return out, nil
+	return mapRows(rows, itemFromSQLC), nil
 }
 
 func itemFromSQLC(it storesqlc.Item) Item {
@@ -475,18 +393,11 @@ func (r *Repository) UpsertClue(ctx context.Context, c Clue) error {
 }
 
 func (r *Repository) MarkClueFound(ctx context.Context, id, locationID string, turn int) error {
-	n, err := storesqlc.New(r.q).MarkClueFound(ctx, storesqlc.MarkClueFoundParams{
+	return checkRowsAffected(storesqlc.New(r.q).MarkClueFound(ctx, storesqlc.MarkClueFoundParams{
 		FoundInLocationID: sqlNullString(locationID),
 		FoundAtTurn:       sqlNullInt64(turn),
 		ID:                id,
-	})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	}))
 }
 
 func (r *Repository) ListFoundClues(ctx context.Context, saveID string) ([]Clue, error) {
@@ -494,11 +405,7 @@ func (r *Repository) ListFoundClues(ctx context.Context, saveID string) ([]Clue,
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Clue, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, clueFromSQLC(row))
-	}
-	return out, nil
+	return mapRows(rows, clueFromSQLC), nil
 }
 
 func clueFromSQLC(c storesqlc.Clue) Clue {
@@ -551,11 +458,7 @@ func (r *Repository) ListEvents(ctx context.Context, saveID string, fromTurn, to
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Event, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, eventFromSQLC(row))
-	}
-	return out, nil
+	return mapRows(rows, eventFromSQLC), nil
 }
 
 func eventFromSQLC(e storesqlc.Event) Event {

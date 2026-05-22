@@ -275,6 +275,7 @@ func TestModel_ViewSummarizesProviderErrors(t *testing.T) {
 	assert.Contains(t, summary, "模型调用失败")
 	assert.Contains(t, summary, "401 Unauthorized")
 	assert.Contains(t, summary, "invalid x-api-key")
+	assert.Contains(t, v, "模型调用失败")
 	assert.NotContains(t, v, "https://api.anthropic.com")
 }
 
@@ -289,15 +290,81 @@ func TestModel_ViewUsesWorkbenchLayoutWithCaseRail(t *testing.T) {
 
 	v := m.View()
 
-	assert.Contains(t, v, "case:fh")
+	assert.Contains(t, v, "Whisperer 案件桌")
 	assert.Contains(t, v, "任务简报")
 	assert.Contains(t, v, "建议行动")
 	assert.Contains(t, v, "行动流")
 	assert.Contains(t, v, "案件卡")
-	assert.Contains(t, v, "LOCATION")
-	assert.Contains(t, v, "TARGETS")
+	assert.Contains(t, v, "地点")
+	assert.Contains(t, v, "在场人物")
 	assert.Contains(t, v, "/talk vance")
 	assert.Contains(t, v, "Tab 补全目标")
+	assert.NotContains(t, v, "case:fh")
+}
+
+func TestModel_CommandAndHelpOverlays(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	m.width = 100
+	m.height = 28
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	mm := updated.(Model)
+	assert.Equal(t, overlayCommands, mm.overlay)
+	assert.Contains(t, mm.View(), "命令面板")
+	assert.Contains(t, mm.View(), "指名对话")
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm = updated.(Model)
+	assert.Equal(t, overlayNone, mm.overlay)
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	mm = updated.(Model)
+	assert.Equal(t, overlayHelp, mm.overlay)
+	assert.Contains(t, mm.View(), "玩家帮助")
+	assert.Contains(t, mm.View(), "Shift+Tab")
+}
+
+func TestModel_CaseRailTabsCycle(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	m = updated.(Model)
+	m.width = 120
+	m.height = 30
+
+	assert.Contains(t, m.View(), "地点")
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	assert.Equal(t, panelPeople, m.activePanel)
+	assert.Contains(t, m.View(), "人物")
+	assert.Contains(t, m.View(), "/talk vance")
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	assert.Equal(t, panelClues, m.activePanel)
+	assert.Contains(t, m.View(), "线索")
+	assert.Contains(t, m.View(), "湿布片")
+}
+
+func TestModel_StoryScrollsWithPageKeys(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
+	m.width = 100
+	m.height = 18
+	for i := 0; i < 24; i++ {
+		m.log = append(m.log, logEntry{kind: EntryGM, text: "叙事段落"})
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	mm := updated.(Model)
+	assert.Greater(t, mm.storyOffset, 0)
+	assert.Contains(t, mm.View(), "↑ 更早内容")
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	mm = updated.(Model)
+	assert.Zero(t, mm.storyOffset)
 }
 
 func TestModel_ViewHidesCommandHintOnShortScreens(t *testing.T) {
@@ -324,7 +391,7 @@ func TestModel_TimeCommand(t *testing.T) {
 	mm.input.SetValue("/time")
 	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm = updated.(Model)
-	assert.Contains(t, mm.log[len(mm.log)-1].text, "morning")
+	assert.Contains(t, mm.log[len(mm.log)-1].text, "清晨")
 }
 
 func TestModel_AllCommandRunsTurn(t *testing.T) {
@@ -342,6 +409,8 @@ func TestModel_AllCommandRunsTurn(t *testing.T) {
 	require.NotEmpty(t, r.calls)
 	assert.Contains(t, r.calls[0], "[all]")
 	assert.Contains(t, mm.log[len(mm.log)-1].text, "众人沉默")
+	assert.NotContains(t, mm.log[0].text, "[all]")
+	assert.Contains(t, mm.log[0].text, "对在场所有人说")
 }
 
 func TestModel_TalkCommandRunsTurn(t *testing.T) {
@@ -356,6 +425,8 @@ func TestModel_TalkCommandRunsTurn(t *testing.T) {
 	updated, _ = mm.Update(msg)
 	require.NotEmpty(t, r.calls)
 	assert.Contains(t, r.calls[0], "[talk:vance]")
+	assert.NotContains(t, mm.log[0].text, "[talk:vance]")
+	assert.Contains(t, mm.log[0].text, "对 vance 说")
 	_ = updated
 }
 

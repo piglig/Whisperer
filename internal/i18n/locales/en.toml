@@ -12,9 +12,9 @@ other = "Whisperer first-run setup"
 other = "Answer a few questions and Whisperer will save your preferences to {{.Path}}. You can edit or delete that file at any time."
 
 [wizard.choose_provider]
-other = "1) Pick an LLM provider [anthropic / openrouter / openai / grok / gemini] (default: anthropic)"
+other = "1) Pick an LLM provider"
 [wizard.choose_provider_invalid]
-other = "Invalid choice {{.Choice}}: pick anthropic, openrouter, openai, grok, gemini, or press Enter for the default."
+other = "Invalid choice {{.Choice}}: pick a number from the list, or use anthropic / openrouter / openai / grok / gemini."
 
 [wizard.api_key_prompt]
 other = "2) Your {{.EnvVar}} (API key). Press Enter to skip — you can still set the env var later."
@@ -22,12 +22,12 @@ other = "2) Your {{.EnvVar}} (API key). Press Enter to skip — you can still se
 other = "No API key entered. Make sure {{.EnvVar}} is set before running Whisperer, otherwise it will not start."
 
 [wizard.choose_scenario]
-other = "3) Default scenario id (default: fog_harbor)"
+other = "3) Pick a default scenario"
 [wizard.choose_scenario_invalid]
-other = "Unrecognized scenario {{.Choice}}: only fog_harbor ships built-in."
+other = "Unrecognized scenario {{.Choice}}: pick a number from the list."
 
 [wizard.choose_lang]
-other = "4) UI language [zh-CN / en / auto] (default: auto, follows $LANG)"
+other = "4) Pick UI language"
 
 [wizard.confirm]
 other = "Write these preferences to {{.Path}}? [Y/n]"

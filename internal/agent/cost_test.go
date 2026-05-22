@@ -3,28 +3,27 @@ package agent
 import (
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPricingFor_LongestPrefixWins(t *testing.T) {
 	// 4-7 表里有显式条目 → 命中 75 USD/MTok 输出
-	p := PricingFor(anthropic.Model("claude-opus-4-7-20260101"))
+	p := PricingFor(Model("claude-opus-4-7-20260101"))
 	assert.Equal(t, 75.0, p.OutputPerMTok)
 
 	// 4-5 sonnet 应命中 sonnet 行（3/15）而不是 opus 行（15/75）
-	p = PricingFor(anthropic.Model("claude-sonnet-4-5-20250929"))
+	p = PricingFor(Model("claude-sonnet-4-5-20250929"))
 	assert.Equal(t, 3.0, p.InputPerMTok)
 	assert.Equal(t, 15.0, p.OutputPerMTok)
 
 	// 完全不匹配 → 零值
-	p = PricingFor(anthropic.Model("claude-fictional-99"))
+	p = PricingFor(Model("claude-fictional-99"))
 	assert.Equal(t, 0.0, p.InputPerMTok)
 	assert.Equal(t, 0.0, p.OutputPerMTok)
 }
 
 func TestPricingFor_OpenRouterPrefix(t *testing.T) {
-	p := PricingFor(anthropic.Model("anthropic/claude-4.6-sonnet-20260217"))
+	p := PricingFor(Model("anthropic/claude-4.6-sonnet-20260217"))
 	assert.Equal(t, 3.0, p.InputPerMTok)
 	assert.Equal(t, 15.0, p.OutputPerMTok)
 }
@@ -40,7 +39,7 @@ func TestCostUSD_Sonnet(t *testing.T) {
 }
 
 func TestCostUSD_UnknownModelReturnsZero(t *testing.T) {
-	in, out, total := CostUSD(anthropic.Model("unknown-x"), 999_999, 999_999)
+	in, out, total := CostUSD(Model("unknown-x"), 999_999, 999_999)
 	assert.Equal(t, 0.0, in)
 	assert.Equal(t, 0.0, out)
 	assert.Equal(t, 0.0, total)

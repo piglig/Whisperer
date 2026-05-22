@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -21,12 +20,12 @@ const (
 )
 
 const (
-	OpenAIModelGM     anthropic.Model = "gpt-5.1"
-	OpenAIModelHelper anthropic.Model = "gpt-5.1-mini"
-	GrokModelGM       anthropic.Model = "grok-4.3"
-	GrokModelHelper   anthropic.Model = "grok-4.3-fast"
-	GeminiModelGM     anthropic.Model = "gemini-2.5-pro"
-	GeminiModelHelper anthropic.Model = "gemini-2.5-flash"
+	OpenAIModelGM     Model = "gpt-5.1"
+	OpenAIModelHelper Model = "gpt-5.1-mini"
+	GrokModelGM       Model = "grok-4.3"
+	GrokModelHelper   Model = "grok-4.3-fast"
+	GeminiModelGM     Model = "gemini-2.5-pro"
+	GeminiModelHelper Model = "gemini-2.5-flash"
 )
 
 // OpenAIChat adapts the official OpenAI Go SDK to Whisperer's existing LLM
@@ -55,7 +54,7 @@ func NewOpenAIChat(cfg ClientConfig) *OpenAIChat {
 	return &OpenAIChat{client: openai.NewClient(opts...)}
 }
 
-func (c *OpenAIChat) NewMessage(ctx context.Context, params anthropic.MessageNewParams) (*anthropic.Message, error) {
+func (c *OpenAIChat) NewMessage(ctx context.Context, params MessageRequest) (*Message, error) {
 	req, err := toOpenAIChatParams(params)
 	if err != nil {
 		return nil, err
@@ -67,7 +66,7 @@ func (c *OpenAIChat) NewMessage(ctx context.Context, params anthropic.MessageNew
 	return openAIChatCompletionToAnthropic(resp, string(params.Model))
 }
 
-func toOpenAIChatParams(params anthropic.MessageNewParams) (openai.ChatCompletionNewParams, error) {
+func toOpenAIChatParams(params MessageRequest) (openai.ChatCompletionNewParams, error) {
 	req := openai.ChatCompletionNewParams{
 		Model: shared.ChatModel(params.Model),
 	}
@@ -96,35 +95,33 @@ func toOpenAIChatParams(params anthropic.MessageNewParams) (openai.ChatCompletio
 	return req, nil
 }
 
-func messageParamToOpenAI(msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+func messageParamToOpenAI(msg MessageParam) []openai.ChatCompletionMessageParamUnion {
 	var textParts []string
 	var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 	var toolMessages []openai.ChatCompletionMessageParamUnion
 
 	for _, block := range msg.Content {
-		switch {
-		case block.OfText != nil:
-			textParts = append(textParts, block.OfText.Text)
-		case block.OfToolUse != nil:
+		switch block.Type {
+		case "text":
+			textParts = append(textParts, block.Text)
+		case "tool_use":
 			args := "{}"
-			if block.OfToolUse.Input != nil {
-				if b, err := json.Marshal(block.OfToolUse.Input); err == nil && len(b) > 0 {
-					args = string(b)
-				}
+			if len(block.Input) > 0 {
+				args = string(block.Input)
 			}
 			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
 				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-					ID: block.OfToolUse.ID,
+					ID: block.ID,
 					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-						Name:      block.OfToolUse.Name,
+						Name:      block.Name,
 						Arguments: args,
 					},
 				},
 			})
-		case block.OfToolResult != nil:
+		case "tool_result":
 			toolMessages = append(toolMessages, openai.ToolMessage(
-				toolResultText(block.OfToolResult),
-				block.OfToolResult.ToolUseID,
+				block.Text,
+				block.ToolUseID,
 			))
 		}
 	}
@@ -148,11 +145,7 @@ func messageParamToOpenAI(msg anthropic.MessageParam) []openai.ChatCompletionMes
 	}, toolMessages...)
 }
 
-func toolParamToOpenAI(tool anthropic.ToolUnionParam) (openai.ChatCompletionToolUnionParam, bool, error) {
-	if tool.OfTool == nil {
-		return openai.ChatCompletionToolUnionParam{}, false, nil
-	}
-	t := tool.OfTool
+func toolParamToOpenAI(t ToolDefinition) (openai.ChatCompletionToolUnionParam, bool, error) {
 	schema := map[string]any{}
 	schemaBytes, err := json.Marshal(t.InputSchema)
 	if err != nil {
@@ -166,95 +159,63 @@ func toolParamToOpenAI(tool anthropic.ToolUnionParam) (openai.ChatCompletionTool
 	if _, ok := schema["type"]; !ok {
 		schema["type"] = "object"
 	}
-	desc := ""
-	if t.Description.Valid() {
-		desc = t.Description.Value
-	}
 	return openai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
 		Name:        t.Name,
-		Description: openai.String(desc),
+		Description: openai.String(t.Description),
 		Parameters:  shared.FunctionParameters(schema),
 	}), true, nil
 }
 
-func toolResultText(block *anthropic.ToolResultBlockParam) string {
-	if block == nil {
-		return ""
-	}
-	var parts []string
-	for _, item := range block.Content {
-		if item.OfText != nil {
-			parts = append(parts, item.OfText.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-func openAIChatCompletionToAnthropic(resp *openai.ChatCompletion, fallbackModel string) (*anthropic.Message, error) {
+func openAIChatCompletionToAnthropic(resp *openai.ChatCompletion, fallbackModel string) (*Message, error) {
 	if resp == nil || len(resp.Choices) == 0 {
 		return nil, errors.New("openai chat: response has no choices")
 	}
 	choice := resp.Choices[0]
-	content := make([]map[string]any, 0, 1+len(choice.Message.ToolCalls))
+	content := make([]ContentBlock, 0, 1+len(choice.Message.ToolCalls))
 	if strings.TrimSpace(choice.Message.Content) != "" {
-		content = append(content, map[string]any{
-			"type": "text",
-			"text": choice.Message.Content,
-		})
+		content = append(content, ContentBlock{Type: "text", Text: choice.Message.Content})
 	}
 	for i, tc := range choice.Message.ToolCalls {
 		fn := tc.Function
-		input := map[string]any{}
+		input := json.RawMessage([]byte("{}"))
 		if strings.TrimSpace(fn.Arguments) != "" {
-			if err := json.Unmarshal([]byte(fn.Arguments), &input); err != nil {
-				input = map[string]any{"_raw": fn.Arguments}
+			if json.Valid([]byte(fn.Arguments)) {
+				input = json.RawMessage(fn.Arguments)
+			} else {
+				input, _ = json.Marshal(map[string]any{"_raw": fn.Arguments})
 			}
 		}
 		id := tc.ID
 		if id == "" {
 			id = fmt.Sprintf("call_%d", i+1)
 		}
-		content = append(content, map[string]any{
-			"type":  "tool_use",
-			"id":    id,
-			"name":  fn.Name,
-			"input": input,
-		})
+		content = append(content, ContentBlock{Type: "tool_use", ID: id, Name: fn.Name, Input: input})
 	}
 	if len(content) == 0 {
-		content = append(content, map[string]any{"type": "text", "text": ""})
+		content = append(content, ContentBlock{Type: "text", Text: ""})
 	}
 
-	stopReason := "end_turn"
+	stopReason := StopReasonEndTurn
 	if len(choice.Message.ToolCalls) > 0 || choice.FinishReason == "tool_calls" {
-		stopReason = "tool_use"
+		stopReason = StopReasonToolUse
 	} else if choice.FinishReason == "length" {
-		stopReason = "max_tokens"
+		stopReason = StopReasonMaxTokens
 	}
 
-	msgJSON, err := json.Marshal(map[string]any{
-		"id":          firstNonEmpty(resp.ID, "msg_openai_chat"),
-		"type":        "message",
-		"role":        "assistant",
-		"model":       firstNonEmpty(resp.Model, fallbackModel),
-		"content":     content,
-		"stop_reason": stopReason,
-		"usage": map[string]any{
-			"input_tokens":  resp.Usage.PromptTokens,
-			"output_tokens": resp.Usage.CompletionTokens,
+	return &Message{
+		ID:         firstNonEmpty(resp.ID, "msg_openai_chat"),
+		Role:       RoleAssistant,
+		Model:      Model(firstNonEmpty(resp.Model, fallbackModel)),
+		Content:    content,
+		StopReason: stopReason,
+		Usage: Usage{
+			InputTokens:  resp.Usage.PromptTokens,
+			OutputTokens: resp.Usage.CompletionTokens,
 		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	var msg anthropic.Message
-	if err := json.Unmarshal(msgJSON, &msg); err != nil {
-		return nil, fmt.Errorf("openai chat: convert response: %w", err)
-	}
-	return &msg, nil
+	}, nil
 }
 
-func joinTextBlocks(blocks []anthropic.TextBlockParam) string {
+func joinTextBlocks(blocks []SystemBlock) string {
 	parts := make([]string, 0, len(blocks))
 	for _, b := range blocks {
 		parts = append(parts, b.Text)

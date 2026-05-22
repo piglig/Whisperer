@@ -19,9 +19,9 @@ other = "Whisperer 首次运行向导"
 other = "回答几个问题，把你的偏好保存到 {{.Path}}。任何时候可以编辑或删除该文件。"
 
 [wizard.choose_provider]
-other = "1) 选择 LLM provider [anthropic / openrouter / openai / grok / gemini]（默认 anthropic）"
+other = "1) 选择 LLM provider"
 [wizard.choose_provider_invalid]
-other = "无效选择 {{.Choice}}：只接受 anthropic / openrouter / openai / grok / gemini / 回车默认。"
+other = "无效选择 {{.Choice}}：请选择列表编号，或输入 anthropic / openrouter / openai / grok / gemini。"
 
 [wizard.api_key_prompt]
 other = "2) 你的 {{.EnvVar}}（API key）。回车跳过——稍后通过环境变量提供也行。"
@@ -29,12 +29,12 @@ other = "2) 你的 {{.EnvVar}}（API key）。回车跳过——稍后通过环�
 other = "未填写 API key。下次运行时请确保 {{.EnvVar}} 已设，否则 whisperer 无法启动。"
 
 [wizard.choose_scenario]
-other = "3) 默认剧本 ID（默认 fog_harbor）"
+other = "3) 选择默认剧本"
 [wizard.choose_scenario_invalid]
-other = "未识别的剧本 {{.Choice}}：内置剧本只有 fog_harbor。"
+other = "未识别的剧本 {{.Choice}}：请选择列表编号。"
 
 [wizard.choose_lang]
-other = "4) UI 语言 [zh-CN / en / auto]（默认 auto，按 $LANG 自动检测）"
+other = "4) 选择 UI 语言"
 
 [wizard.confirm]
 other = "把以上偏好写入 {{.Path}}？[Y/n]"

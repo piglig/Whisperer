@@ -15,6 +15,85 @@ func RenderTruth(s *Scenario) string {
 	return strings.TrimSpace(s.Truth)
 }
 
+// RenderOpeningBriefing returns the player-facing first screen narrative.
+// It must not include implementation details such as scenario IDs or variants.
+func RenderOpeningBriefing(s *Scenario) string {
+	if s == nil {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "《%s》\n\n", s.Title)
+	if intro := strings.TrimSpace(s.Intro); intro != "" {
+		b.WriteString(intro)
+	} else {
+		b.WriteString(fallbackOpeningIntro(s))
+	}
+	b.WriteString("\n\n")
+	b.WriteString("可以从这些行动开始：\n")
+	for _, action := range openingActions(s) {
+		fmt.Fprintf(&b, "- %s\n", action)
+	}
+	b.WriteString("\n直接输入一句自然语言即可，例：\"我查看公告栏上的失踪启事\"。")
+	return strings.TrimSpace(b.String())
+}
+
+func fallbackOpeningIntro(s *Scenario) string {
+	loc := startLocation(s)
+	if loc.Name == "" {
+		return "故事即将开始。你已经抵达事件现场，接下来要靠观察、询问与推理找出真相。"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "你抵达%s。", loc.Name)
+	if loc.Description != "" {
+		b.WriteString(loc.Description)
+	}
+	if names := startNPCNames(s); len(names) > 0 {
+		fmt.Fprintf(&b, "\n\n附近可以接触的人：%s。", strings.Join(names, "、"))
+	}
+	return b.String()
+}
+
+func openingActions(s *Scenario) []string {
+	loc := startLocation(s)
+	actions := []string{}
+	if loc.Name != "" {
+		actions = append(actions, "观察"+loc.Name+"，寻找异常痕迹或可调查的物件")
+	}
+	if names := startNPCNames(s); len(names) > 0 {
+		actions = append(actions, "与"+names[0]+"交谈，询问最近发生了什么")
+	}
+	actions = append(actions,
+		"沿着可见道路前往酒馆、巡警所、教堂或灯塔等地点",
+		"查看自己的案件卡，确认当前地点、人物和已发现线索",
+	)
+	return actions
+}
+
+func startLocation(s *Scenario) SLocation {
+	if s == nil {
+		return SLocation{}
+	}
+	for _, loc := range s.Locations {
+		if loc.ID == s.Start.Location {
+			return loc
+		}
+	}
+	return SLocation{}
+}
+
+func startNPCNames(s *Scenario) []string {
+	if s == nil || s.Start.Location == "" {
+		return nil
+	}
+	names := []string{}
+	for _, npc := range s.NPCs {
+		if npc.Location == s.Start.Location && npc.Name != "" {
+			names = append(names, npc.Name)
+		}
+	}
+	return names
+}
+
 // RenderNPCSecrets 返回每位 NPC 的隐藏动机表（markdown）。
 // 空字符串表示无 NPC 声明 secret。
 func RenderNPCSecrets(s *Scenario) string {

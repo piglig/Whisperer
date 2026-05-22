@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -63,7 +62,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 
 	var (
 		trace      agent.TurnTrace
-		newHistory []anthropic.MessageParam
+		newHistory []agent.MessageParam
 		report     sla.Report
 		firedList  []scenario.FiredTrigger
 		drift      scenario.DriftStatus

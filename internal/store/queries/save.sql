@@ -12,30 +12,12 @@ INSERT INTO saves (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetSave :one
-SELECT
-    id,
-    name,
-    scenario_id,
-    variant_id,
-    current_location_id,
-    turn_count,
-    time_of_day,
-    created_at,
-    updated_at
+SELECT *
 FROM saves
 WHERE id = ?;
 
 -- name: ListSaves :many
-SELECT
-    id,
-    name,
-    scenario_id,
-    variant_id,
-    current_location_id,
-    turn_count,
-    time_of_day,
-    created_at,
-    updated_at
+SELECT *
 FROM saves
 ORDER BY updated_at DESC;
 

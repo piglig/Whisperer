@@ -1,19 +1,17 @@
 package tools
 
-import (
-	"github.com/anthropics/anthropic-sdk-go"
-)
+import "github.com/zhuzhenwu/whisperer/internal/agent"
 
 // allToolDefs 返回完整 tool 定义。Schema 用 JSON Schema 子集。
 //
 // 顺序在 LLM 视图里固定，便于 prompt caching 命中。
-func allToolDefs() []anthropic.ToolParam {
-	return []anthropic.ToolParam{
+func allToolDefs() []agent.ToolDefinition {
+	return []agent.ToolDefinition{
 		// ----- rules -----
 		{
 			Name:        "roll_skill",
-			Description: anthropic.String("Resolve a CoC 7e skill check. The result is authoritative."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Resolve a CoC 7e skill check. The result is authoritative.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"skill_name":  obj("string", "Display name of the skill, e.g. 'Spot Hidden'."),
 					"skill_value": obj("integer", "Investigator's current value for the skill, 0..99."),
@@ -30,8 +28,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "roll_damage",
-			Description: anthropic.String("Roll a damage expression like '1d6+2'."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Roll a damage expression like '1d6+2'.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"expression": obj("string", "Dice expression, e.g. '1d6', '2d6+3', '1d10-1'."),
 				},
@@ -40,12 +38,10 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name: "sanity_check",
-			Description: anthropic.String(
-				"Resolve a SAN check for the active investigator. Reads current SAN from state, " +
-					"applies the loss, persists the new SAN, and returns the trace including " +
-					"whether indefinite insanity was triggered.",
-			),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Resolve a SAN check for the active investigator. Reads current SAN from state, " +
+				"applies the loss, persists the new SAN, and returns the trace including " +
+				"whether indefinite insanity was triggered.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"loss_pass": obj("string", "Dice expression for SAN loss on success (e.g. '0', '1', '1d4')."),
 					"loss_fail": obj("string", "Dice expression for SAN loss on failure (e.g. '1d4', '1d10')."),
@@ -55,8 +51,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "opposed_roll",
-			Description: anthropic.String("Resolve an opposed check between two parties."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Resolve an opposed check between two parties.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"actor_name":   obj("string", "Display name of the actor."),
 					"actor_skill":  obj("integer", "Actor's skill value, 0..99."),
@@ -70,13 +66,13 @@ func allToolDefs() []anthropic.ToolParam {
 		// ----- read -----
 		{
 			Name:        "get_investigator",
-			Description: anthropic.String("Return the current active investigator's full state."),
-			InputSchema: anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+			Description: "Return the current active investigator's full state.",
+			InputSchema: agent.ToolInputSchema{Properties: map[string]any{}},
 		},
 		{
 			Name:        "get_npc",
-			Description: anthropic.String("Return an NPC's record by id."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Return an NPC's record by id.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"npc_id": obj("string", "NPC id."),
 				},
@@ -85,8 +81,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "get_location",
-			Description: anthropic.String("Return a location record by id."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Return a location record by id.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"location_id": obj("string", "Location id."),
 				},
@@ -95,8 +91,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "list_npcs_at_location",
-			Description: anthropic.String("List living NPCs at a given location."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "List living NPCs at a given location.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"location_id": obj("string", "Location id."),
 				},
@@ -105,15 +101,15 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "list_found_clues",
-			Description: anthropic.String("List clues already discovered in this save."),
-			InputSchema: anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+			Description: "List clues already discovered in this save.",
+			InputSchema: agent.ToolInputSchema{Properties: map[string]any{}},
 		},
 
 		// ----- write -----
 		{
 			Name:        "update_investigator_vitals",
-			Description: anthropic.String("Set HP / MP / SAN of the active investigator."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Set HP / MP / SAN of the active investigator.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"investigator_id": obj("string", "Investigator id."),
 					"hp":              obj("integer", "New HP (>= 0)."),
@@ -125,8 +121,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "update_npc_relation",
-			Description: anthropic.String("Adjust an NPC's relation_to_player by delta."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Adjust an NPC's relation_to_player by delta.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"npc_id": obj("string", "NPC id."),
 					"delta":  obj("integer", "Signed change to relation_to_player."),
@@ -136,8 +132,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "kill_npc",
-			Description: anthropic.String("Mark an NPC as dead (alive=0). Does not delete the row."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Mark an NPC as dead (alive=0). Does not delete the row.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"npc_id": obj("string", "NPC id."),
 				},
@@ -146,8 +142,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "mark_location_visited",
-			Description: anthropic.String("Mark a location as visited."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Mark a location as visited.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"location_id": obj("string", "Location id."),
 				},
@@ -156,8 +152,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "move_item",
-			Description: anthropic.String("Change an item's owner."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Change an item's owner.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"item_id":    obj("string", "Item id."),
 					"owner_type": map[string]any{"type": "string", "enum": []string{"npc", "location", "investigator", "none"}, "description": "New owner kind."},
@@ -168,8 +164,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "destroy_item",
-			Description: anthropic.String("Mark an item as destroyed. Item conservation: do NOT revive it later."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Mark an item as destroyed. Item conservation: do NOT revive it later.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"item_id": obj("string", "Item id."),
 				},
@@ -178,8 +174,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "mark_clue_found",
-			Description: anthropic.String("Record that a clue has been discovered."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Record that a clue has been discovered.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"clue_id":     obj("string", "Clue id."),
 					"location_id": obj("string", "Where it was found (optional)."),
@@ -189,8 +185,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "transition_location",
-			Description: anthropic.String("Move the investigator's current location and advance the save's progress."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Move the investigator's current location and advance the save's progress.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"location_id": obj("string", "Destination location id."),
 				},
@@ -199,13 +195,13 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "get_time_of_day",
-			Description: anthropic.String("Return the save's current time-of-day stage: morning|afternoon|night."),
-			InputSchema: anthropic.ToolInputSchemaParam{Properties: map[string]any{}},
+			Description: "Return the save's current time-of-day stage: morning|afternoon|night.",
+			InputSchema: agent.ToolInputSchema{Properties: map[string]any{}},
 		},
 		{
 			Name:        "advance_time",
-			Description: anthropic.String("Advance the time-of-day by the given number of stages (1 = morning→afternoon)."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Advance the time-of-day by the given number of stages (1 = morning→afternoon).",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"stages": obj("integer", "How many stages to advance (default 1)."),
 				},
@@ -213,12 +209,10 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name: "npc_speak",
-			Description: anthropic.String(
-				"Voice an NPC in their own persona. Reads NPC profile + recent history from memory, " +
-					"calls a sub-agent, returns one short utterance. The line is also appended to the event log. " +
-					"Use this when the GM narrative needs the NPC to actually speak in-character.",
-			),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Voice an NPC in their own persona. Reads NPC profile + recent history from memory, " +
+				"calls a sub-agent, returns one short utterance. The line is also appended to the event log. " +
+				"Use this when the GM narrative needs the NPC to actually speak in-character.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"npc_id":      obj("string", "NPC id."),
 					"intent":      obj("string", "Brief instruction to the NPC sub-agent (tone, topic, attitude)."),
@@ -229,8 +223,8 @@ func allToolDefs() []anthropic.ToolParam {
 		},
 		{
 			Name:        "add_event",
-			Description: anthropic.String("Append an event to the log. Use type='narrative' for in-fiction notes, 'state_change' for material changes already applied via other tools."),
-			InputSchema: anthropic.ToolInputSchemaParam{
+			Description: "Append an event to the log. Use type='narrative' for in-fiction notes, 'state_change' for material changes already applied via other tools.",
+			InputSchema: agent.ToolInputSchema{
 				Properties: map[string]any{
 					"type":             obj("string", "Event type, e.g. 'narrative', 'state_change'."),
 					"description":      obj("string", "Short summary, ≤ 200 chars."),

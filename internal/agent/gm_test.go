@@ -6,20 +6,19 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// fakeLLM 用预排好的脚本回放 *anthropic.Message。
+// fakeLLM 用预排好的脚本回放 *agent.Message。
 type fakeLLM struct {
-	scripts []string // 每个 string 是一段完整的 *anthropic.Message JSON
+	scripts []string // 每个 string 是一段完整的 *agent.Message JSON
 	calls   int
 	failOn  int // 第几次调用返回 error；0 表示不失败
 	failErr error
 }
 
-func (f *fakeLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*anthropic.Message, error) {
+func (f *fakeLLM) NewMessage(_ context.Context, _ MessageRequest) (*Message, error) {
 	idx := f.calls
 	f.calls++
 	if f.failOn > 0 && f.calls == f.failOn {
@@ -32,8 +31,8 @@ func (f *fakeLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*
 	return parseMsg(f.scripts[idx]), nil
 }
 
-func parseMsg(s string) *anthropic.Message {
-	var m anthropic.Message
+func parseMsg(s string) *Message {
+	var m Message
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		panic(err)
 	}

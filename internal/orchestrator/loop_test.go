@@ -7,25 +7,25 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator/sla"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
-// fakeLLM 把固定脚本回放为 *anthropic.Message。每个 script 是已 marshal 的 message JSON。
+// fakeLLM 把固定脚本回放为 *agent.Message。每个 script 是已 marshal 的 message JSON。
 type fakeLLM struct {
 	scripts []string
 	calls   int
 	err     error
 }
 
-func (f *fakeLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*anthropic.Message, error) {
+func (f *fakeLLM) NewMessage(_ context.Context, _ agent.MessageRequest) (*agent.Message, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -38,8 +38,8 @@ func (f *fakeLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*
 	return parseMsg(f.scripts[idx]), nil
 }
 
-func parseMsg(s string) *anthropic.Message {
-	var m anthropic.Message
+func parseMsg(s string) *agent.Message {
+	var m agent.Message
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		panic(err)
 	}

@@ -63,7 +63,7 @@ type Location struct {
 	Visited         int64          `json:"visited"`
 }
 
-type Npc struct {
+type NPC struct {
 	ID               string         `json:"id"`
 	SaveID           string         `json:"save_id"`
 	Name             string         `json:"name"`
@@ -74,7 +74,7 @@ type Npc struct {
 	Alive            int64          `json:"alive"`
 }
 
-type Safe struct {
+type Save struct {
 	ID                string         `json:"id"`
 	Name              string         `json:"name"`
 	ScenarioID        string         `json:"scenario_id"`

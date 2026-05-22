@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,7 +18,7 @@ type stubLLM struct {
 	err  error
 }
 
-func (s *stubLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*anthropic.Message, error) {
+func (s *stubLLM) NewMessage(_ context.Context, _ agent.MessageRequest) (*agent.Message, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -28,7 +27,7 @@ func (s *stubLLM) NewMessage(_ context.Context, _ anthropic.MessageNewParams) (*
 		"content": []map[string]any{{"type": "text", "text": s.text}},
 		"usage":   map[string]int{"input_tokens": 1, "output_tokens": 1},
 	})
-	var msg anthropic.Message
+	var msg agent.Message
 	if err := json.Unmarshal(body, &msg); err != nil {
 		return nil, err
 	}

@@ -74,11 +74,16 @@ func TestUpdate_AppendsFiredTriggers(t *testing.T) {
 	mm := updated.(Model)
 	hasFired := false
 	for _, e := range mm.log {
-		if e.kind == EntrySystem && contains(e.text, "lighthouse_storm") {
+		if e.kind == EntrySystem && contains(e.text, "故事状态已更新") {
 			hasFired = true
 		}
 	}
 	assert.True(t, hasFired)
+	for _, e := range mm.log {
+		assert.NotContains(t, e.text, "lighthouse_storm")
+		assert.NotContains(t, e.text, "SLA")
+		assert.NotContains(t, e.text, "触发器")
+	}
 	assert.Contains(t, mm.drift, "软偏离")
 }
 
@@ -94,7 +99,7 @@ func TestView_BusyState(t *testing.T) {
 	m := New(context.Background(), &fakeRunner{saveID: id}, st, "")
 	m.busy = true
 	v := m.View()
-	assert.Contains(t, v, "THINKING")
+	assert.Contains(t, v, "推演中")
 	assert.Contains(t, v, "GM 正在推演回合")
 }
 

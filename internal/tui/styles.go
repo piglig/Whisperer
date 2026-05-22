@@ -22,6 +22,17 @@ var (
 			Foreground(lipgloss.Color("#facc15")).
 			Bold(true)
 
+	tabActiveStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#0f172a")).
+			Background(lipgloss.Color("#facc15")).
+			Bold(true).
+			Padding(0, 1)
+
+	tabStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#cbd5e1")).
+			Background(lipgloss.Color("#1e293b")).
+			Padding(0, 1)
+
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#64748b"))
 

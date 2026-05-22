@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	"github.com/anthropics/anthropic-sdk-go"
-
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator/sla"
@@ -39,8 +37,8 @@ type Config struct {
 	MaxSLARetries int
 
 	// 模型可显式指定；空时用 agent.ModelGM / agent.ModelHelper。
-	ModelGM  anthropic.Model
-	ModelNPC anthropic.Model
+	ModelGM  agent.Model
+	ModelNPC agent.Model
 
 	// Judge 是可选的 LLM-as-judge 实现，启用后会在结构化 SLA 之外做语义校验
 	// （SLA #3 NPC 一致性 / #7 角色知识闭环）。每回合最多增加两次 Haiku 调用。
@@ -71,7 +69,7 @@ type Orchestrator struct {
 	traceWriter *TraceWriter
 
 	// 持续累计的对话历史（不持久化；进程重启后清空）
-	history []anthropic.MessageParam
+	history []agent.MessageParam
 }
 
 // New 构造 Orchestrator。
@@ -125,8 +123,8 @@ func (o *Orchestrator) SaveID() string { return o.cfg.SaveID }
 func (o *Orchestrator) Engine() *scenario.Engine { return o.engine }
 
 // History 返回当前对话历史副本（只读）。
-func (o *Orchestrator) History() []anthropic.MessageParam {
-	out := make([]anthropic.MessageParam, len(o.history))
+func (o *Orchestrator) History() []agent.MessageParam {
+	out := make([]agent.MessageParam, len(o.history))
 	copy(out, o.history)
 	return out
 }

@@ -128,6 +128,26 @@ func TestRunWizard_OpenAIProvider(t *testing.T) {
 	assert.Equal(t, "OPENAI_API_KEY", result.APIKeyEnv)
 }
 
+func TestRunWizard_NumberedChoices(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.toml")
+
+	env, out := newTestEnv(t, "3\nsk-test\n1\n2\ny\n")
+	written, result, err := runWizard(env, configPath)
+	require.NoError(t, err)
+	assert.True(t, written)
+	assert.Equal(t, "grok", result.Provider)
+	assert.Equal(t, "XAI_API_KEY", result.APIKeyEnv)
+	assert.Equal(t, "fog_harbor", result.Scenario)
+	assert.Equal(t, "zh-CN", result.Lang)
+
+	outStr := out.String()
+	assert.Contains(t, outStr, "1. anthropic")
+	assert.Contains(t, outStr, "2. openai")
+	assert.Contains(t, outStr, "雾港疑案")
+	assert.Contains(t, outStr, "1. 自动检测")
+}
+
 func TestShouldRunWizard(t *testing.T) {
 	dir := t.TempDir()
 	existing := filepath.Join(dir, "exists.toml")

@@ -24,9 +24,9 @@ FROM npcs
 WHERE id = ?
 `
 
-func (q *Queries) GetNPC(ctx context.Context, id string) (Npc, error) {
+func (q *Queries) GetNPC(ctx context.Context, id string) (NPC, error) {
 	row := q.db.QueryRowContext(ctx, getNPC, id)
-	var i Npc
+	var i NPC
 	err := row.Scan(
 		&i.ID,
 		&i.SaveID,
@@ -74,15 +74,15 @@ type ListNPCsAtLocationParams struct {
 	LocationID sql.NullString `json:"location_id"`
 }
 
-func (q *Queries) ListNPCsAtLocation(ctx context.Context, arg ListNPCsAtLocationParams) ([]Npc, error) {
+func (q *Queries) ListNPCsAtLocation(ctx context.Context, arg ListNPCsAtLocationParams) ([]NPC, error) {
 	rows, err := q.db.QueryContext(ctx, listNPCsAtLocation, arg.SaveID, arg.LocationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Npc{}
+	items := []NPC{}
 	for rows.Next() {
-		var i Npc
+		var i NPC
 		if err := rows.Scan(
 			&i.ID,
 			&i.SaveID,

@@ -2,30 +2,37 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"charm.land/huh/v2"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/config"
 	"github.com/zhuzhenwu/whisperer/internal/i18n"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
 )
 
 // wizardEnv 把所有外部依赖（提示输出、用户输入、退出码）抽进结构体，方便测试
 // 注入 stub。生产路径在 runWizard 调用 newWizardEnv() 时绑定 stdin / stderr。
 type wizardEnv struct {
-	in  *bufio.Reader
-	out io.Writer
-	tr  *i18n.Translator
+	in          *bufio.Reader
+	out         io.Writer
+	tr          *i18n.Translator
+	interactive bool
 }
 
 func newWizardEnv(tr *i18n.Translator) *wizardEnv {
 	return &wizardEnv{
-		in:  bufio.NewReader(os.Stdin),
-		out: os.Stderr,
-		tr:  tr,
+		in:          bufio.NewReader(os.Stdin),
+		out:         os.Stderr,
+		tr:          tr,
+		interactive: stdinIsTTY(),
 	}
 }
 
@@ -50,25 +57,107 @@ type wizardResult struct {
 func runWizard(env *wizardEnv, configPath string) (written bool, result wizardResult, err error) {
 	tr := env.tr
 
-	// === Welcome ===
 	env.println()
 	env.println(tr.T("wizard.welcome_title"))
 	env.println(strings.Repeat("─", 32))
 	env.println(tr.T("wizard.welcome_body", map[string]any{"Path": configPath}))
 	env.println()
 
-	// === 1. provider ===
+	if env.interactive {
+		return runInteractiveWizard(env, configPath)
+	}
+	return runScriptedWizard(env, configPath)
+}
+
+func runInteractiveWizard(env *wizardEnv, configPath string) (written bool, result wizardResult, err error) {
+	result.Provider = agent.ProviderAnthropic
+	result.Scenario = defaultScenario()
+	result.Lang = ""
+	confirm := true
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("选择 LLM provider").
+				Description("用 ↑/↓ 浏览，Enter 确认；不需要记 provider 拼写。").
+				Options(providerSelectOptions()...).
+				Value(&result.Provider),
+			huh.NewInput().
+				Title("API key").
+				Description("可跳过；key 不会写入配置文件，稍后用环境变量提供也可以。").
+				Placeholder("留空跳过").
+				EchoMode(huh.EchoModePassword).
+				Value(&result.APIKey),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("选择剧本").
+				Description("只展示玩家可见信息；剧本真相不会暴露。").
+				Options(scenarioSelectOptions()...).
+				Value(&result.Scenario),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("选择界面语言").
+				Options(
+					huh.NewOption("自动检测（推荐）", ""),
+					huh.NewOption("简体中文", "zh-CN"),
+					huh.NewOption("English", "en"),
+				).
+				Value(&result.Lang),
+			huh.NewConfirm().
+				Title("写入配置文件？").
+				Description(configPath).
+				Affirmative("写入").
+				Negative("取消").
+				Value(&confirm),
+		),
+	).
+		WithTheme(huh.ThemeFunc(huh.ThemeCharm)).
+		WithOutput(env.out).
+		WithInput(os.Stdin).
+		WithAccessible(os.Getenv("WHISPERER_ACCESSIBLE") != "")
+
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			env.println(env.tr.T("wizard.aborted"))
+			return false, result, nil
+		}
+		return false, result, err
+	}
+	spec := agent.ProviderInfo(result.Provider)
+	result.APIKeyEnv = spec.EnvKey
+	result.APIKey = strings.TrimSpace(result.APIKey)
+	if !confirm {
+		env.println(env.tr.T("wizard.aborted"))
+		return false, result, nil
+	}
+	if result.APIKey == "" {
+		env.println(env.tr.T("wizard.api_key_blank_warning", map[string]any{"EnvVar": result.APIKeyEnv}))
+	}
+	if err := writeWizardConfig(configPath, result); err != nil {
+		return false, result, err
+	}
+	env.println(env.tr.T("wizard.written", map[string]any{"Path": configPath}))
+	if result.APIKey == "" {
+		env.println(env.tr.T("wizard.api_key_hint"))
+	}
+	return true, result, nil
+}
+
+func runScriptedWizard(env *wizardEnv, configPath string) (written bool, result wizardResult, err error) {
+	tr := env.tr
+
 	for {
-		env.println(tr.T("wizard.choose_provider"))
+		env.println(providerMenuText(tr.T("wizard.choose_provider")))
 		_, _ = fmt.Fprint(env.out, "> ")
 		choice, err := env.readLine()
 		if err != nil {
 			return false, result, err
 		}
-		choice = strings.ToLower(strings.TrimSpace(choice))
-		spec, ok := agent.ParseProvider(choice)
+		spec, ok := parseProviderChoice(choice)
 		if !ok {
-			env.println(tr.T("wizard.choose_provider_invalid", map[string]any{"Choice": choice}))
+			env.println(tr.T("wizard.choose_provider_invalid", map[string]any{"Choice": strings.TrimSpace(choice)}))
 			continue
 		}
 		result.Provider = spec.Name
@@ -77,7 +166,6 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 	}
 	env.println()
 
-	// === 2. API key ===
 	env.println(tr.T("wizard.api_key_prompt", map[string]any{"EnvVar": result.APIKeyEnv}))
 	_, _ = fmt.Fprint(env.out, "> ")
 	keyLine, err := env.readLine()
@@ -90,50 +178,32 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 	}
 	env.println()
 
-	// === 3. scenario ===
 	for {
-		env.println(tr.T("wizard.choose_scenario"))
+		env.println(scenarioMenuText(tr.T("wizard.choose_scenario")))
 		_, _ = fmt.Fprint(env.out, "> ")
 		choice, err := env.readLine()
 		if err != nil {
 			return false, result, err
 		}
-		choice = strings.TrimSpace(choice)
-		if choice == "" {
-			result.Scenario = "fog_harbor"
-			break
-		}
-		if choice == "fog_harbor" {
-			result.Scenario = choice
+		if id, ok := parseScenarioChoice(choice); ok {
+			result.Scenario = id
 			break
 		}
 		env.println(tr.T("wizard.choose_scenario_invalid", map[string]any{
-			"Choice": choice,
+			"Choice": strings.TrimSpace(choice),
 		}))
 	}
 	env.println()
 
-	// === 4. language ===
-	env.println(tr.T("wizard.choose_lang"))
+	env.println(languageMenuText(tr.T("wizard.choose_lang")))
 	_, _ = fmt.Fprint(env.out, "> ")
 	langChoice, err := env.readLine()
 	if err != nil {
 		return false, result, err
 	}
-	switch strings.ToLower(strings.TrimSpace(langChoice)) {
-	case "", "auto":
-		result.Lang = "" // 留空 → 运行时自动检测
-	case "en":
-		result.Lang = "en"
-	case "zh-cn", "zh", "cn":
-		result.Lang = "zh-CN"
-	default:
-		// 任何其他用户认可的 BCP47 tag 直接保存
-		result.Lang = strings.TrimSpace(langChoice)
-	}
+	result.Lang = parseLanguageChoice(langChoice)
 	env.println()
 
-	// === 5. confirm ===
 	env.println(tr.T("wizard.confirm", map[string]any{"Path": configPath}))
 	_, _ = fmt.Fprint(env.out, "> ")
 	yn, err := env.readLine()
@@ -146,7 +216,6 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 		return false, result, nil
 	}
 
-	// === 6. write ===
 	if err := writeWizardConfig(configPath, result); err != nil {
 		return false, result, err
 	}
@@ -155,6 +224,126 @@ func runWizard(env *wizardEnv, configPath string) (written bool, result wizardRe
 		env.println(tr.T("wizard.api_key_hint"))
 	}
 	return true, result, nil
+}
+
+func providerSelectOptions() []huh.Option[string] {
+	providers := []string{
+		agent.ProviderAnthropic,
+		agent.ProviderOpenAI,
+		agent.ProviderGrok,
+		agent.ProviderGemini,
+		agent.ProviderOpenRouter,
+	}
+	options := make([]huh.Option[string], 0, len(providers))
+	for _, provider := range providers {
+		spec := agent.ProviderInfo(provider)
+		options = append(options, huh.NewOption(providerLabel(spec), spec.Name).Selected(provider == agent.ProviderAnthropic))
+	}
+	return options
+}
+
+func providerLabel(spec agent.ProviderSpec) string {
+	return fmt.Sprintf("%s · %s", spec.Name, spec.EnvKey)
+}
+
+func scenarioSelectOptions() []huh.Option[string] {
+	infos := bundledScenarios()
+	options := make([]huh.Option[string], 0, len(infos))
+	for i, info := range infos {
+		label := fmt.Sprintf("%s · %d 地点 · %d 人物 · %d 线索",
+			info.Title, info.Locations, info.NPCs, info.Clues)
+		if info.Variants > 0 {
+			label += fmt.Sprintf(" · %d 变体", info.Variants)
+		}
+		options = append(options, huh.NewOption(label, info.ID).Selected(i == 0))
+	}
+	return options
+}
+
+func bundledScenarios() []scenario.BundledInfo {
+	infos, err := scenario.ListBundled()
+	if err == nil && len(infos) > 0 {
+		return infos
+	}
+	return []scenario.BundledInfo{{ID: "fog_harbor", Title: "雾港疑案"}}
+}
+
+func defaultScenario() string {
+	return bundledScenarios()[0].ID
+}
+
+func providerMenuText(title string) string {
+	lines := []string{title}
+	for i, opt := range providerSelectOptions() {
+		lines = append(lines, fmt.Sprintf("  %d. %s", i+1, opt.Key))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func parseProviderChoice(choice string) (agent.ProviderSpec, bool) {
+	choice = strings.TrimSpace(choice)
+	if idx, err := strconv.Atoi(choice); err == nil {
+		options := providerSelectOptions()
+		if idx >= 1 && idx <= len(options) {
+			return agent.ProviderInfo(options[idx-1].Value), true
+		}
+		return agent.ProviderSpec{}, false
+	}
+	return agent.ParseProvider(choice)
+}
+
+func scenarioMenuText(title string) string {
+	lines := []string{title}
+	for i, info := range bundledScenarios() {
+		label := info.Title
+		if info.Locations > 0 {
+			label += fmt.Sprintf(" · %d 地点 · %d 人物 · %d 线索", info.Locations, info.NPCs, info.Clues)
+		}
+		lines = append(lines, fmt.Sprintf("  %d. %s", i+1, label))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func parseScenarioChoice(choice string) (string, bool) {
+	choice = strings.TrimSpace(choice)
+	infos := bundledScenarios()
+	if choice == "" {
+		return infos[0].ID, true
+	}
+	if idx, err := strconv.Atoi(choice); err == nil {
+		if idx >= 1 && idx <= len(infos) {
+			return infos[idx-1].ID, true
+		}
+		return "", false
+	}
+	for _, info := range infos {
+		if choice == info.ID {
+			return info.ID, true
+		}
+	}
+	return "", false
+}
+
+func languageMenuText(title string) string {
+	return strings.Join([]string{
+		title,
+		"  1. 自动检测（推荐）",
+		"  2. 简体中文",
+		"  3. English",
+	}, "\n")
+}
+
+func parseLanguageChoice(choice string) string {
+	switch strings.ToLower(strings.TrimSpace(choice)) {
+	case "", "1", "auto":
+		return ""
+	case "2", "zh-cn", "zh", "cn":
+		return "zh-CN"
+	case "3", "en":
+		return "en"
+	default:
+		return strings.TrimSpace(choice)
+	}
 }
 
 // readLine 读 stdin 一行；EOF 视作空字符串（让向导在 piped 输入下也能退出干净）。

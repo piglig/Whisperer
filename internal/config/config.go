@@ -1,13 +1,8 @@
 // Package config 加载 Whisperer 的运行配置：默认值 → TOML → 环境变量 → CLI flag
 // 的四层覆盖。
 //
-// 设计取舍：
-//   - 不引入 viper / koanf。stdlib `flag` + BurntSushi/toml 已够；这两个库会
-//     带 50+ 间接依赖，对一个 TUI 工具不值。
-//   - **API key 一律不进 TOML**——只走环境变量或 --api-key flag。TOML 文件经常
-//     被 git/同步工具不小心带走；强约束让用户不会因为方便误把 key 提交。
-//   - Duration 字段在 TOML 用字符串（"120s"），Load 时解析成 time.Duration，
-//     避免 BurntSushi/toml 的 UnmarshalText boilerplate。
+// API key 一律不进 TOML——只走环境变量或 --api-key flag。TOML 文件经常被
+// git/同步工具不小心带走；强约束让用户不会因为方便误把 key 提交。
 package config
 
 import (
@@ -15,13 +10,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
+	"github.com/knadh/koanf/parsers/toml"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
-// Config 是 Whisperer 的运行时配置。所有字段都是可空——只有用户显式提供（toml /
-// env / flag）才会非零。空值在 cmd/whisperer/main.go 的最后一段决定其默认行为。
+// Config 是 Whisperer 的运行时配置。Load 返回默认值、TOML 与环境变量合并后的结果；
+// CLI flags 在 cmd/whisperer/main.go 中继续作为最后一层覆盖。
 type Config struct {
 	// LLM provider 选择
 	Provider    string `toml:"provider"`
@@ -50,7 +50,7 @@ type Config struct {
 	// LLM 网络层
 	LLMMaxRetries int           `toml:"-"`
 	LLMTimeout    time.Duration `toml:"-"`
-	LLMTimeoutStr string        `toml:"llm_timeout"`     // "120s"
+	LLMTimeoutStr string        `toml:"llm_timeout"`     // "120s"，由 Load 解析到 LLMTimeout
 	LLMRetriesRaw *int          `toml:"llm_max_retries"` // 用指针区分"未设"与"显式 0"
 
 	// Embedder section
@@ -62,6 +62,25 @@ type EmbedderSection struct {
 	Provider string `toml:"provider"`
 	Model    string `toml:"model"`
 	BaseURL  string `toml:"base_url"`
+}
+
+// Defaults 返回内置默认值。它们也会作为 koanf 的第一层 provider 参与合并。
+func Defaults() Config {
+	return Config{
+		Provider:      "",
+		Scenario:      "fog_harbor",
+		DBPath:        "whisperer.db",
+		MemDir:        "mem",
+		MetaPath:      "runs/meta.json",
+		LogFormat:     "text",
+		LogLevel:      "info",
+		LLMTimeout:    120 * time.Second,
+		TraceDir:      "runs",
+		LLMTimeoutStr: "120s",
+		Embedder: EmbedderSection{
+			Provider: "fake",
+		},
+	}
 }
 
 // DefaultPath 返回平台规范的默认配置文件位置。
@@ -83,39 +102,106 @@ func DefaultPath() string {
 	return ""
 }
 
-// Load 从 path 读 TOML；path == "" 时尝试 DefaultPath。
+// Load 从 path 读 TOML 并叠加 WHISPERER_* 环境变量；path == "" 时尝试 DefaultPath。
 //
-// 文件不存在不算错（首次运行无配置是正常情况），返回零值 Config。文件存在但
+// 文件不存在不算错（首次运行无配置是正常情况），返回默认 Config。文件存在但
 // 解析失败 → 返回错误，绝不静默吞错让用户感到"配置没生效"。
 func Load(path string) (*Config, error) {
 	if path == "" {
 		path = DefaultPath()
 	}
-	cfg := &Config{}
-	if path == "" {
-		return cfg, nil
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(defaultMap(), "."), nil); err != nil {
+		return nil, fmt.Errorf("config: defaults: %w", err)
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cfg, nil
+	if path != "" {
+		if _, err := os.Stat(path); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("config: read %s: %w", path, err)
+			}
+		} else if err := k.Load(file.Provider(path), toml.Parser()); err != nil {
+			return nil, fmt.Errorf("config: parse %s: %w", path, err)
 		}
-		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
-	if _, err := toml.Decode(string(raw), cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	if err := k.Load(env.ProviderWithValue("WHISPERER_", ".", envKey), nil); err != nil {
+		return nil, fmt.Errorf("config: env: %w", err)
 	}
-	if err := cfg.parseDurations(); err != nil {
+
+	cfg := Defaults()
+	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "toml"}); err != nil {
+		return nil, fmt.Errorf("config: decode: %w", err)
+	}
+	if err := cfg.parseScalars(); err != nil {
 		return nil, fmt.Errorf("config: %s: %w", path, err)
 	}
 	if cfg.LLMRetriesRaw != nil {
 		cfg.LLMMaxRetries = *cfg.LLMRetriesRaw
 	}
-	return cfg, nil
+	return &cfg, nil
 }
 
-// parseDurations 把 TOML 里的 "120s" 字符串解析成 time.Duration。
-func (c *Config) parseDurations() error {
+func defaultMap() map[string]interface{} {
+	d := Defaults()
+	return map[string]interface{}{
+		"provider":          d.Provider,
+		"scenario":          d.Scenario,
+		"db_path":           d.DBPath,
+		"memory_dir":        d.MemDir,
+		"meta_path":         d.MetaPath,
+		"log_format":        d.LogFormat,
+		"log_level":         d.LogLevel,
+		"llm_timeout":       d.LLMTimeoutStr,
+		"llm_max_retries":   3,
+		"trace_dir":         d.TraceDir,
+		"embedder.provider": d.Embedder.Provider,
+	}
+}
+
+func envKey(key, value string) (string, interface{}) {
+	switch strings.TrimPrefix(key, "WHISPERER_") {
+	case "PROVIDER":
+		return "provider", value
+	case "MODEL":
+		return "model", value
+	case "MODEL_HELPER":
+		return "model_helper", value
+	case "SCENARIO":
+		return "scenario", value
+	case "SAVE":
+		return "save", value
+	case "VARIANT":
+		return "variant", value
+	case "DB":
+		return "db_path", value
+	case "MEM_DIR":
+		return "memory_dir", value
+	case "TRACE_DIR":
+		return "trace_dir", value
+	case "META":
+		return "meta_path", value
+	case "LOG_FORMAT":
+		return "log_format", value
+	case "LOG_LEVEL":
+		return "log_level", value
+	case "LANG":
+		return "lang", value
+	case "LLM_TIMEOUT":
+		return "llm_timeout", value
+	case "LLM_MAX_RETRIES":
+		return "llm_max_retries", value
+	case "EMBEDDER":
+		return "embedder.provider", value
+	case "EMBEDDER_MODEL":
+		return "embedder.model", value
+	case "EMBEDDER_BASE_URL":
+		return "embedder.base_url", value
+	default:
+		return "", nil
+	}
+}
+
+// parseScalars 把 TOML/env 里的字符串标量解析成强类型字段。
+func (c *Config) parseScalars() error {
 	if c.LLMTimeoutStr != "" {
 		d, err := time.ParseDuration(c.LLMTimeoutStr)
 		if err != nil {
@@ -124,41 +210,4 @@ func (c *Config) parseDurations() error {
 		c.LLMTimeout = d
 	}
 	return nil
-}
-
-// EnvOverlay 把环境变量覆盖到 Config 上（在 TOML 之后、CLI flag 之前）。
-//
-// 支持的变量：
-//   - WHISPERER_PROVIDER / WHISPERER_MODEL / WHISPERER_MODEL_HELPER
-//   - WHISPERER_SCENARIO / WHISPERER_SAVE / WHISPERER_VARIANT
-//   - WHISPERER_DB / WHISPERER_MEM_DIR / WHISPERER_TRACE_DIR / WHISPERER_META
-//   - WHISPERER_LOG_FORMAT / WHISPERER_LOG_LEVEL
-//   - WHISPERER_EMBEDDER / WHISPERER_EMBEDDER_MODEL / WHISPERER_EMBEDDER_BASE_URL
-//
-// **API key 永远只通过 provider 专属环境变量（如 ANTHROPIC_API_KEY /
-// OPENROUTER_API_KEY / OPENAI_API_KEY / XAI_API_KEY / GEMINI_API_KEY）或
-// EMBEDDER_API_KEY 传，不在这里覆盖**——保持密钥与一般配置的物理隔离。
-func (c *Config) EnvOverlay() {
-	envSet(&c.Provider, "WHISPERER_PROVIDER")
-	envSet(&c.Model, "WHISPERER_MODEL")
-	envSet(&c.ModelHelper, "WHISPERER_MODEL_HELPER")
-	envSet(&c.Scenario, "WHISPERER_SCENARIO")
-	envSet(&c.Save, "WHISPERER_SAVE")
-	envSet(&c.Variant, "WHISPERER_VARIANT")
-	envSet(&c.DBPath, "WHISPERER_DB")
-	envSet(&c.MemDir, "WHISPERER_MEM_DIR")
-	envSet(&c.TraceDir, "WHISPERER_TRACE_DIR")
-	envSet(&c.MetaPath, "WHISPERER_META")
-	envSet(&c.LogFormat, "WHISPERER_LOG_FORMAT")
-	envSet(&c.LogLevel, "WHISPERER_LOG_LEVEL")
-	envSet(&c.Lang, "WHISPERER_LANG")
-	envSet(&c.Embedder.Provider, "WHISPERER_EMBEDDER")
-	envSet(&c.Embedder.Model, "WHISPERER_EMBEDDER_MODEL")
-	envSet(&c.Embedder.BaseURL, "WHISPERER_EMBEDDER_BASE_URL")
-}
-
-func envSet(target *string, key string) {
-	if v := os.Getenv(key); v != "" {
-		*target = v
-	}
 }

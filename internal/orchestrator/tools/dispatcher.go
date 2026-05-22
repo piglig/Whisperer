@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	"github.com/anthropics/anthropic-sdk-go"
-
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
@@ -81,14 +79,8 @@ func (d *Dispatcher) WithScenario(s *scenario.Scenario) *Dispatcher {
 func (d *Dispatcher) SetClock(now func() int64) { d.now = now }
 
 // Tools 返回当前 Dispatcher 支持的全部 tool 定义，可直接传给 agent.GMAgent。
-func (d *Dispatcher) Tools() []anthropic.ToolUnionParam {
-	defs := allToolDefs()
-	out := make([]anthropic.ToolUnionParam, len(defs))
-	for i := range defs {
-		t := defs[i]
-		out[i] = anthropic.ToolUnionParam{OfTool: &t}
-	}
-	return out
+func (d *Dispatcher) Tools() []agent.ToolDefinition {
+	return allToolDefs()
 }
 
 // Dispatch 是 agent.ToolHandler 的实现。

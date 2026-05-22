@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/anthropics/anthropic-sdk-go"
 )
 
 const (
@@ -19,8 +17,8 @@ const (
 type ProviderSpec struct {
 	Name        string
 	EnvKey      string
-	ModelGM     anthropic.Model
-	ModelHelper anthropic.Model
+	ModelGM     Model
+	ModelHelper Model
 }
 
 var providerSpecs = map[string]ProviderSpec{
@@ -108,7 +106,7 @@ func AutoProvider() string {
 	return ProviderAnthropic
 }
 
-func BuildLLM(provider, key string, maxRetries int, timeout time.Duration) (LLM, anthropic.Model, anthropic.Model) {
+func BuildLLM(provider, key string, maxRetries int, timeout time.Duration) (LLM, Model, Model) {
 	spec := ProviderInfo(provider)
 	switch spec.Name {
 	case ProviderOpenRouter:

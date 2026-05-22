@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 
 	"github.com/zhuzhenwu/whisperer/internal/agent"
@@ -122,10 +121,10 @@ func main() {
 
 	llm, modelGM, modelNPC := agent.BuildLLM(*provider, key, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
-		modelGM = anthropic.Model(*modelOverride)
+		modelGM = agent.Model(*modelOverride)
 	}
 	if *modelHelperOverride != "" {
-		modelNPC = anthropic.Model(*modelHelperOverride)
+		modelNPC = agent.Model(*modelHelperOverride)
 	}
 
 	orch, err := orchestrator.New(orchestrator.Config{

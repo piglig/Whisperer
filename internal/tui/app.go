@@ -59,6 +59,37 @@ type snapshotMsg struct {
 	err       error
 }
 
+type sidePanel int
+
+const (
+	panelScene sidePanel = iota
+	panelPeople
+	panelClues
+	panelLog
+	sidePanelCount
+)
+
+func (p sidePanel) label() string {
+	switch p {
+	case panelPeople:
+		return "人物"
+	case panelClues:
+		return "线索"
+	case panelLog:
+		return "裁定"
+	default:
+		return "场景"
+	}
+}
+
+type overlayMode int
+
+const (
+	overlayNone overlayMode = iota
+	overlayHelp
+	overlayCommands
+)
+
 // Model 是 bubbletea 应用状态。
 type Model struct {
 	runner Runner
@@ -81,6 +112,10 @@ type Model struct {
 	height      int
 	quitting    bool
 
+	activePanel sidePanel
+	overlay     overlayMode
+	storyOffset int
+
 	completionBase  string
 	completionIndex int
 
@@ -92,7 +127,7 @@ type Model struct {
 func New(ctx context.Context, runner Runner, st *store.Store, openingNarrative string) Model {
 	in := textinput.New()
 	in.Prompt = ""
-	in.Placeholder = "输入行动，或 /help"
+	in.Placeholder = "描述行动，或 Ctrl+P 打开命令"
 	in.Focus()
 	in.CharLimit = 1000
 
@@ -174,16 +209,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.busy {
-			// 等待中只接受 Ctrl+C
-			if msg.Type == tea.KeyCtrlC {
-				m.quitting = true
-				return m, tea.Quit
+		if msg.Type == tea.KeyCtrlC {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		if m.overlay != overlayNone {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyEnter, tea.KeyCtrlP:
+				m.overlay = overlayNone
+				return m, nil
+			}
+			if len(msg.Runes) == 1 && msg.Runes[0] == '?' {
+				m.overlay = overlayNone
+				return m, nil
 			}
 			return m, nil
 		}
+
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlP:
+			m.overlay = overlayCommands
+			return m, nil
+		case tea.KeyShiftTab:
+			m.activePanel = (m.activePanel + 1) % sidePanelCount
+			return m, nil
+		case tea.KeyPgUp:
+			m.storyOffset += 6
+			return m, nil
+		case tea.KeyPgDown:
+			m.storyOffset = max(0, m.storyOffset-6)
+			return m, nil
+		}
+		if len(msg.Runes) == 1 && msg.Runes[0] == '?' && strings.TrimSpace(m.input.Value()) == "" {
+			m.overlay = overlayHelp
+			return m, nil
+		}
+
+		if m.busy {
+			return m, nil
+		}
+		switch msg.Type {
+		case tea.KeyEsc:
 			m.quitting = true
 			return m, tea.Quit
 		case tea.KeyTab:
@@ -240,6 +306,7 @@ func (m Model) handleSubmit(text string) (Model, tea.Cmd) {
 	}
 	m.log = append(m.log, logEntry{kind: EntryPlayer, text: text})
 	m.busy = true
+	m.storyOffset = 0
 	return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
 }
 
@@ -333,7 +400,7 @@ func (m Model) handleCommand(c command) (Model, tea.Cmd) {
 	case "inventory", "inv":
 		m.log = append(m.log, logEntry{kind: EntrySystem, text: m.renderInventory()})
 	case "time":
-		m.log = append(m.log, logEntry{kind: EntrySystem, text: "当前时段: " + string(m.save.TimeOfDay)})
+		m.log = append(m.log, logEntry{kind: EntrySystem, text: "当前时段：" + displayTimeOfDay(m.save.TimeOfDay)})
 	case "bind":
 		return m.handleBind(c)
 	case "hint":
@@ -345,18 +412,18 @@ func (m Model) handleCommand(c command) (Model, tea.Cmd) {
 		m.busy = true
 		return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
 	case "talk":
-		// /talk <NPC>：把后续输入当作"对该 NPC 说话"，MVP 实现为 prefix 注入并立即提交。
+		// /talk <人物>：把后续输入当作"对该人物说话"，MVP 实现为 prefix 注入并立即提交。
 		if c.arg == "" {
-			m.log = append(m.log, logEntry{kind: EntryError, text: "用法: /talk <NPC name|id>"})
+			m.log = append(m.log, logEntry{kind: EntryError, text: "用法: /talk <人物> <你想说的话>"})
 			return m, nil
 		}
 		text := fmt.Sprintf("[talk:%s] %s", c.arg, c.rest)
-		m.log = append(m.log, logEntry{kind: EntryPlayer, text: text})
+		m.log = append(m.log, logEntry{kind: EntryPlayer, text: m.talkDisplayText(c.arg, c.rest)})
 		m.busy = true
 		return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
 	case "all":
 		text := "[all] " + c.rest
-		m.log = append(m.log, logEntry{kind: EntryPlayer, text: text})
+		m.log = append(m.log, logEntry{kind: EntryPlayer, text: "对在场所有人说：" + c.rest})
 		m.busy = true
 		return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
 	default:
@@ -365,14 +432,28 @@ func (m Model) handleCommand(c command) (Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) talkDisplayText(target, speech string) string {
+	name := target
+	for _, npc := range m.npcs {
+		if strings.EqualFold(npc.ID, target) || strings.EqualFold(npc.Name, target) {
+			name = nonEmpty(npc.Name, target)
+			break
+		}
+	}
+	if strings.TrimSpace(speech) == "" {
+		return "准备与 " + name + " 交谈。"
+	}
+	return "对 " + name + " 说：" + speech
+}
+
 func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	if res.Narrative != "" {
 		m.log = append(m.log, logEntry{kind: EntryGM, text: res.Narrative})
 	}
-	for _, fired := range res.Fired {
+	for range res.Fired {
 		m.log = append(m.log, logEntry{
 			kind: EntrySystem,
-			text: fmt.Sprintf("[剧本] 触发器 %s 已生效", fired.ID),
+			text: "故事状态已更新：新的线索或局势变化已记录。",
 		})
 	}
 	switch res.Drift.String() {
@@ -386,7 +467,7 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	if !res.SLAReport.Passed && len(res.SLAReport.Violations) > 0 {
 		m.log = append(m.log, logEntry{
 			kind: EntryError,
-			text: fmt.Sprintf("[SLA 降级] 仍有 %d 项未通过——叙事可能与状态不一致", len(res.SLAReport.Violations)),
+			text: "刚才的叙事和游戏状态可能不完全一致；系统已保留当前可用结果。",
 		})
 	}
 	if res.Ending != nil && !m.endingShown {
@@ -396,6 +477,7 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 			text: fmt.Sprintf("[%s] %s", strings.ToUpper(res.Ending.Kind), res.Ending.Description),
 		})
 	}
+	m.storyOffset = 0
 }
 
 // View 渲染整个界面。
@@ -422,15 +504,21 @@ func (m Model) View() string {
 }
 
 func (m Model) renderWorkbenchShell(width, height int) string {
-	briefHeight := 3
+	briefHeight := 2
+	navHeight := 1
 	composerHeight := 3
-	contentHeight := max(6, height-1-briefHeight-composerHeight)
+	contentHeight := max(6, height-1-briefHeight-navHeight-composerHeight)
+	stage := m.renderMainStage(width, contentHeight)
+	if m.overlay != overlayNone {
+		stage = m.renderOverlay(width, contentHeight)
+	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderSessionBar(width),
 		m.renderBriefing(width, briefHeight),
-		m.renderMainStage(width, contentHeight),
+		m.renderCommandDeck(width, navHeight),
+		stage,
 		m.renderComposer(width, composerHeight),
 	)
 }
@@ -441,26 +529,29 @@ func (m Model) renderCompactShell(width, height int) string {
 		composerHeight = 1
 	}
 	contentHeight := max(3, height-1-composerHeight)
+	stage := m.renderTimeline(width, contentHeight)
+	if m.overlay != overlayNone {
+		stage = m.renderOverlay(width, contentHeight)
+	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderSessionBar(width),
-		m.renderTimeline(width, contentHeight),
+		stage,
 		m.renderComposer(width, composerHeight),
 	)
 }
 
 func (m Model) renderSessionBar(width int) string {
-	state := "READY"
+	state := "待行动"
 	if m.busy {
-		state = "THINKING"
+		state = "推演中"
 	} else if m.endingShown {
-		state = "ENDING"
+		state = "已结局"
 	}
-	text := fmt.Sprintf("Whisperer  case:%s  turn:%d  %s    %s    %s",
-		nonEmpty(m.save.ScenarioID, "?"),
+	text := fmt.Sprintf("Whisperer 案件桌  回合 %d  %s    %s    %s",
 		m.save.TurnCount,
-		nonEmpty(string(m.save.TimeOfDay), "?"),
-		nonEmpty(m.inv.Name, "investigator"),
+		displayTimeOfDay(m.save.TimeOfDay),
+		nonEmpty(m.inv.Name, "调查员"),
 		state,
 	)
 	return sessionBarStyle.Width(width).Render(fitLine(text, width-2))
@@ -470,9 +561,13 @@ func (m Model) renderBriefing(width, height int) string {
 	lines := []string{
 		accentStyle.Render("任务简报") + "  " + m.briefLine(),
 		accentStyle.Render("建议行动") + "  " + m.primarySuggestion(),
-		mutedStyle.Render(strings.Repeat("─", width)),
 	}
 	return fixedLines(lines, width, height)
+}
+
+func (m Model) renderCommandDeck(width, height int) string {
+	guide := fmt.Sprintf("Ctrl+P 命令 · Shift+Tab 切换案件卡:%s · PgUp/PgDn 回看故事 · ? 帮助", m.activePanel.label())
+	return fixedLines([]string{mutedStyle.Render(fitLine(guide, width))}, width, height)
 }
 
 func (m Model) briefLine() string {
@@ -480,7 +575,9 @@ func (m Model) briefLine() string {
 		"地点 " + nonEmpty(m.location.Name, "?"),
 		fmt.Sprintf("HP %d MP %d SAN %d", m.inv.HP, m.inv.MP, m.inv.SAN),
 	}
-	if m.drift != "" {
+	if alert := m.latestErrorSummary(); alert != "" {
+		parts = append(parts, "注意 "+alert)
+	} else if m.drift != "" {
 		parts = append(parts, m.drift)
 	} else {
 		parts = append(parts, "主线稳定")
@@ -526,7 +623,7 @@ func (m Model) renderMainStage(width, height int) string {
 }
 
 func (m Model) renderTimeline(width, height int) string {
-	return renderPane("行动流", m.timelineLines(), width, height)
+	return renderStoryPane("故事卷轴 / 行动流", m.timelineLines(), width, height, m.storyOffset)
 }
 
 func (m Model) timelineLines() []string {
@@ -591,21 +688,69 @@ func prefixedBody(label, text string) []string {
 }
 
 func (m Model) renderCaseRail(width, height int) string {
-	return renderPinnedPane("案件卡", m.caseRailLines(), width, height)
+	return renderPinnedPane("案件卡 · "+m.activePanel.label(), m.caseRailLines(), width, height)
 }
 
 func (m Model) caseRailLines() []string {
+	lines := []string{m.caseTabsLine(), ""}
+	switch m.activePanel {
+	case panelPeople:
+		return append(lines, m.peoplePanelLines()...)
+	case panelClues:
+		return append(lines, m.cluePanelLines()...)
+	case panelLog:
+		return append(lines, m.rulingPanelLines()...)
+	default:
+		return append(lines, m.scenePanelLines()...)
+	}
+}
+
+func (m Model) caseTabsLine() string {
+	labels := []struct {
+		panel sidePanel
+		text  string
+	}{
+		{panelScene, "场景"},
+		{panelPeople, "人物"},
+		{panelClues, "线索"},
+		{panelLog, "裁定"},
+	}
+	parts := make([]string, 0, len(labels))
+	for _, item := range labels {
+		if item.panel == m.activePanel {
+			parts = append(parts, tabActiveStyle.Render(item.text))
+		} else {
+			parts = append(parts, tabStyle.Render(item.text))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func (m Model) scenePanelLines() []string {
 	lines := []string{
-		labelStyle.Render("LOCATION"),
+		labelStyle.Render("地点"),
 		"  " + nonEmpty(m.location.Name, "?"),
 	}
 	if m.location.Description != "" {
 		lines = append(lines, "  "+m.location.Description)
 	}
+	lines = append(lines,
+		"",
+		labelStyle.Render("时间"),
+		"  "+displayTimeOfDay(m.save.TimeOfDay),
+	)
+	if m.drift != "" {
+		lines = append(lines, "  "+m.drift)
+	} else {
+		lines = append(lines, "  主线稳定")
+	}
+	if alert := m.latestErrorSummary(); alert != "" {
+		lines = append(lines, "", errorStyle.Render("注意"), "  "+alert)
+	}
 
-	lines = append(lines, "", labelStyle.Render("TARGETS"))
+	lines = append(lines, "", labelStyle.Render("在场人物"))
 	if len(m.npcs) == 0 {
-		lines = append(lines, "  none")
+		lines = append(lines, "  暂无")
 	} else {
 		for _, npc := range m.npcs {
 			name := nonEmpty(npc.Name, npc.ID)
@@ -617,7 +762,43 @@ func (m Model) caseRailLines() []string {
 		}
 	}
 
-	lines = append(lines, "", labelStyle.Render("CLUES"))
+	lines = append(lines, "", labelStyle.Render("下一步"))
+	lines = append(lines, "  "+m.primarySuggestion())
+	return lines
+}
+
+func (m Model) peoplePanelLines() []string {
+	lines := []string{
+		labelStyle.Render("调查员"),
+		"  " + nonEmpty(m.inv.Name, "未载入") + " / " + nonEmpty(m.inv.Occupation, "-"),
+		fmt.Sprintf("  HP %d  MP %d  SAN %d", m.inv.HP, m.inv.MP, m.inv.SAN),
+	}
+	if m.inv.InventoryJSON != "" {
+		lines = append(lines, "  背包 "+m.inv.InventoryJSON)
+	}
+
+	lines = append(lines, "", labelStyle.Render("人物"))
+	if len(m.npcs) == 0 {
+		return append(lines, "  当前地点没有可交互 NPC")
+	}
+	for _, npc := range m.npcs {
+		name := nonEmpty(npc.Name, npc.ID)
+		line := "  " + name
+		if npc.ID != "" {
+			line += "  /talk " + npc.ID
+		}
+		lines = append(lines, line)
+		if npc.Personality != "" {
+			lines = append(lines, "    "+npc.Personality)
+		}
+	}
+	return lines
+}
+
+func (m Model) cluePanelLines() []string {
+	lines := []string{
+		labelStyle.Render("线索"),
+	}
 	if len(m.clues) == 0 {
 		lines = append(lines, "  尚无线索")
 	} else {
@@ -627,24 +808,38 @@ func (m Model) caseRailLines() []string {
 		}
 	}
 
-	lines = append(lines, "", labelStyle.Render("INVESTIGATOR"))
-	lines = append(lines,
-		"  "+nonEmpty(m.inv.Name, "未载入")+" / "+nonEmpty(m.inv.Occupation, "-"),
-		fmt.Sprintf("  HP %d  MP %d  SAN %d", m.inv.HP, m.inv.MP, m.inv.SAN),
-	)
+	lines = append(lines, "", labelStyle.Render("最近记录"))
+	if len(m.events) == 0 {
+		return append(lines, "  暂无事件记录")
+	}
+	for _, ev := range lastEvents(m.events, 6) {
+		lines = append(lines, "  "+ev.Description)
+	}
+	return lines
+}
 
+func (m Model) rulingPanelLines() []string {
+	lines := []string{
+		labelStyle.Render("裁定记录"),
+	}
 	rulings := rulingEntries(m.log)
-	if len(rulings) > 0 || len(m.events) > 0 {
-		lines = append(lines, "", labelStyle.Render("RULINGS"))
-		for _, entry := range lastLogEntries(rulings, 4) {
+	if len(rulings) == 0 {
+		lines = append(lines, "  尚无系统裁定")
+	} else {
+		for _, entry := range lastLogEntries(rulings, 6) {
 			for _, line := range rulingLines(entry) {
 				lines = append(lines, "  "+line)
 			}
 		}
-		for _, ev := range lastEvents(m.events, 3) {
-			lines = append(lines, fmt.Sprintf("  [%s] %s", ev.Type, ev.Description))
-		}
 	}
+
+	lines = append(lines,
+		"",
+		labelStyle.Render("操作"),
+		"  Ctrl+P 命令面板",
+		"  Shift+Tab 切换案件卡",
+		"  PgUp/PgDn 回看故事",
+	)
 	return lines
 }
 
@@ -656,6 +851,15 @@ func rulingEntries(entries []logEntry) []logEntry {
 		}
 	}
 	return out
+}
+
+func (m Model) latestErrorSummary() string {
+	for i := len(m.log) - 1; i >= 0; i-- {
+		if m.log[i].kind == EntryError {
+			return summarizeError(m.log[i].text)
+		}
+	}
+	return ""
 }
 
 func rulingLines(e logEntry) []string {
@@ -714,15 +918,69 @@ func (m Model) commandGuide() string {
 	return "Enter 发送 · Tab 补全 · /hint 提示 · /talk 对话 · /sheet 状态 · /inv 背包"
 }
 
-func renderPane(title string, raw []string, width, height int) string {
-	return renderPaneWithScroll(title, raw, width, height, true)
+func (m Model) renderOverlay(width, height int) string {
+	switch m.overlay {
+	case overlayCommands:
+		return renderPinnedPane("命令面板", m.commandOverlayLines(), width, height)
+	case overlayHelp:
+		return renderPinnedPane("玩家帮助", m.helpOverlayLines(), width, height)
+	default:
+		return m.renderMainStage(width, height)
+	}
+}
+
+func (m Model) commandOverlayLines() []string {
+	return []string{
+		accentStyle.Render("常用行动"),
+		"  直接输入自然语言：检查门锁、追问范斯、翻找抽屉。",
+		"  /talk <人物> <话>  指名对话，Tab 可补全当前地点人物。",
+		"  /all <话>          对全场发言。",
+		"",
+		accentStyle.Render("调查工具"),
+		"  /hint              请求不剧透提示。",
+		"  /sheet             查看调查员属性。",
+		"  /inv               查看背包。",
+		"  /time              查看当前时段。",
+		"",
+		accentStyle.Render("会话"),
+		"  /bind <名字> <职业>  结局后绑定新调查员。",
+		"  /quit              退出。",
+		"",
+		mutedStyle.Render("Esc / Enter / Ctrl+P 关闭命令面板"),
+	}
+}
+
+func (m Model) helpOverlayLines() []string {
+	return []string{
+		accentStyle.Render("桌面布局"),
+		"  左侧是故事卷轴，保留玩家行动与 GM 叙事。",
+		"  右侧案件卡按场景、人物、线索、裁定组织信息。",
+		"  下方输入框只负责下一步行动，避免把命令说明挤进正文。",
+		"",
+		accentStyle.Render("快捷键"),
+		"  Ctrl+P     打开命令面板。",
+		"  Shift+Tab  切换案件卡标签页。",
+		"  PgUp/PgDn  回看或回到最新故事。",
+		"  Tab        补全斜杠命令或 NPC 目标。",
+		"  Esc        退出；覆盖层打开时先关闭覆盖层。",
+		"",
+		accentStyle.Render("推荐玩法"),
+		"  用自然语言描述意图，不必猜系统命令。",
+		"  需要明确目标时使用 /talk；卡住时使用 /hint。",
+		"",
+		mutedStyle.Render("Esc / Enter / ? 关闭帮助"),
+	}
+}
+
+func renderStoryPane(title string, raw []string, width, height, offset int) string {
+	return renderPaneWithScrollOffset(title, raw, width, height, true, offset)
 }
 
 func renderPinnedPane(title string, raw []string, width, height int) string {
-	return renderPaneWithScroll(title, raw, width, height, false)
+	return renderPaneWithScrollOffset(title, raw, width, height, false, 0)
 }
 
-func renderPaneWithScroll(title string, raw []string, width, height int, tail bool) string {
+func renderPaneWithScrollOffset(title string, raw []string, width, height int, tail bool, offset int) string {
 	width = max(10, width)
 	height = max(1, height)
 
@@ -733,8 +991,19 @@ func renderPaneWithScroll(title string, raw []string, width, height int, tail bo
 
 	bodyHeight := max(0, height-len(lines))
 	body := wrapLines(raw, width)
-	if len(body) > bodyHeight {
-		if tail {
+	if bodyHeight > 0 && len(body) > bodyHeight {
+		if tail && offset > 0 {
+			offset = min(offset, len(body)-bodyHeight)
+			start := max(0, len(body)-bodyHeight-offset)
+			end := min(len(body), start+bodyHeight)
+			body = append([]string{}, body[start:end]...)
+			if start > 0 && len(body) > 0 {
+				body[0] = mutedStyle.Render("↑ 更早内容")
+			}
+			if end < len(wrapLines(raw, width)) && len(body) > 0 {
+				body[len(body)-1] = mutedStyle.Render("↓ 更新内容")
+			}
+		} else if tail {
 			body = tailPaneLines(body, bodyHeight)
 		} else if bodyHeight == 1 {
 			body = []string{"..."}
@@ -888,10 +1157,6 @@ func tailLines(lines []string, limit int) []string {
 	return out
 }
 
-func dividerLine(width int) string {
-	return mutedStyle.Render(strings.Repeat("─", max(1, width)))
-}
-
 func fitLine(s string, width int) string {
 	width = max(1, width)
 	if lipgloss.Width(s) <= width {
@@ -944,7 +1209,7 @@ func helpText() string {
 		"/sheet                 显示调查员属性",
 		"/inventory (/inv)      显示背包",
 		"/time                  显示当前时段",
-		"/talk <NPC> <话>       指名对某 NPC 说话",
+		"/talk <人物> <话>      指名对某人说话",
 		"/all <话>              对全场说话",
 		"/hint                  请求一个不剧透的提示",
 		"/bind <name> <职业>    在结局后绑定新调查员到本剧本",
@@ -958,6 +1223,19 @@ func nonEmpty(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func displayTimeOfDay(t store.TimeOfDay) string {
+	switch t {
+	case store.TimeMorning:
+		return "清晨"
+	case store.TimeAfternoon:
+		return "午后"
+	case store.TimeNight:
+		return "夜晚"
+	default:
+		return "未知时段"
+	}
 }
 
 // handleBind 实现 /bind <name> <occupation>。

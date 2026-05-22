@@ -21,6 +21,25 @@ func TestLoadBundled_FogHarbor(t *testing.T) {
 	assert.Equal(t, "harbor", s.Start.Location)
 }
 
+func TestListBundled(t *testing.T) {
+	list, err := ListBundled()
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
+
+	var found *BundledInfo
+	for i := range list {
+		if list[i].ID == "fog_harbor" {
+			found = &list[i]
+			break
+		}
+	}
+	require.NotNil(t, found)
+	assert.Equal(t, "雾港疑案", found.Title)
+	assert.Greater(t, found.Locations, 0)
+	assert.Greater(t, found.NPCs, 0)
+	assert.Greater(t, found.Clues, 0)
+}
+
 func TestLoadBundled_BadID(t *testing.T) {
 	_, err := LoadBundled("../etc/passwd")
 	assert.Error(t, err)

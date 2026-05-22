@@ -34,6 +34,25 @@ func TestRender_FogHarborProducesAllSections(t *testing.T) {
 	assert.Contains(t, atlas, "marisa_exhusband")
 }
 
+func TestRenderOpeningBriefingIsPlayerFacing(t *testing.T) {
+	base, err := LoadBundled("fog_harbor")
+	require.NoError(t, err)
+	eff, _, err := SelectVariantByID(base, "vance_executes")
+	require.NoError(t, err)
+
+	out := RenderOpeningBriefing(eff)
+
+	assert.Contains(t, out, "你是从外地赶来的记者")
+	assert.Contains(t, out, "清晨的渡船")
+	assert.Contains(t, out, "可以从这些行动开始")
+	assert.Contains(t, out, "查看公告栏")
+	assert.NotContains(t, out, "variant")
+	assert.NotContains(t, out, "vance_executes")
+	assert.NotContains(t, out, "剧本 id")
+	assert.NotContains(t, out, "fog_harbor")
+	assert.NotContains(t, out, "当前位置")
+}
+
 func TestRender_NPCKnowledgeForSingleNPC(t *testing.T) {
 	base, err := LoadBundled("fog_harbor")
 	require.NoError(t, err)
@@ -48,6 +67,7 @@ func TestRender_NPCKnowledgeForSingleNPC(t *testing.T) {
 
 func TestRender_EmptyOnNil(t *testing.T) {
 	assert.Equal(t, "", RenderTruth(nil))
+	assert.Equal(t, "", RenderOpeningBriefing(nil))
 	assert.Equal(t, "", RenderNPCSecrets(nil))
 	assert.Equal(t, "", RenderNPCKnowledge(nil))
 	assert.Equal(t, "", RenderClueAtlas(nil))

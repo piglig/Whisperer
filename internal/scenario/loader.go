@@ -3,17 +3,76 @@ package scenario
 import (
 	"embed"
 	"fmt"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 )
 
 // sanLossPattern 校验形如 "0/1"、"1/1d4"、"1d3/1d10" 的克苏鲁 SAN 损失字符串。
 var sanLossPattern = regexp.MustCompile(`^(\d+|\d*d\d+)/(\d+|\d*d\d+)$`)
+var scenarioValidator = newScenarioValidator()
+
+func newScenarioValidator() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	v.RegisterTagNameFunc(func(field reflect.StructField) string {
+		name := strings.Split(field.Tag.Get("yaml"), ",")[0]
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
+	_ = v.RegisterValidation("sanloss", func(fl validator.FieldLevel) bool {
+		return sanLossPattern.MatchString(fl.Field().String())
+	})
+	return v
+}
 
 //go:embed data/*.yaml
 var bundled embed.FS
+
+type BundledInfo struct {
+	ID        string
+	Title     string
+	Locations int
+	NPCs      int
+	Clues     int
+	Variants  int
+}
+
+// ListBundled returns player-facing metadata for every embedded scenario.
+func ListBundled() ([]BundledInfo, error) {
+	entries, err := bundled.ReadDir("data")
+	if err != nil {
+		return nil, fmt.Errorf("scenario: list bundled: %w", err)
+	}
+	out := make([]BundledInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		id := strings.TrimSuffix(entry.Name(), ".yaml")
+		scn, err := LoadBundled(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, BundledInfo{
+			ID:        scn.ID,
+			Title:     scn.Title,
+			Locations: len(scn.Locations),
+			NPCs:      len(scn.NPCs),
+			Clues:     len(scn.Clues),
+			Variants:  len(scn.Variants),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
 
 // LoadBundled 按 id 加载内置剧本，例如 "fog_harbor"。
 func LoadBundled(id string) (*Scenario, error) {
@@ -43,17 +102,8 @@ func Parse(raw []byte) (*Scenario, error) {
 
 // Validate 做静态检查：必填字段、ID 唯一性、引用完整性、union 正交性。
 func Validate(s *Scenario) error {
-	if s.ID == "" {
-		return fmt.Errorf("scenario: missing id")
-	}
-	if s.Title == "" {
-		return fmt.Errorf("scenario: missing title")
-	}
-	if len(s.Locations) == 0 {
-		return fmt.Errorf("scenario: must have at least one location")
-	}
-	if s.Start.Location == "" {
-		return fmt.Errorf("scenario: missing start.location")
+	if err := validateFields(s); err != nil {
+		return err
 	}
 
 	locs := uniqueIDs(idsOfLocations(s.Locations), "location")
@@ -88,13 +138,6 @@ func Validate(s *Scenario) error {
 	if !locSet[s.Start.Location] {
 		return fmt.Errorf("scenario: start.location %q not declared", s.Start.Location)
 	}
-	if s.Start.TimeOfDay != "" {
-		switch s.Start.TimeOfDay {
-		case "morning", "afternoon", "night":
-		default:
-			return fmt.Errorf("scenario: invalid start.time_of_day %q", s.Start.TimeOfDay)
-		}
-	}
 
 	for _, l := range s.Locations {
 		for _, c := range l.Connections {
@@ -107,14 +150,6 @@ func Validate(s *Scenario) error {
 		if n.Location != "" && !locSet[n.Location] {
 			return fmt.Errorf("scenario: npc %s references unknown location %q", n.ID, n.Location)
 		}
-		for k, kn := range n.Knowledge {
-			if strings.TrimSpace(kn.Reveal) == "" {
-				return fmt.Errorf("scenario: npc %s knowledge %q: empty reveal", n.ID, k)
-			}
-			if kn.SanLoss != "" && !sanLossPattern.MatchString(kn.SanLoss) {
-				return fmt.Errorf("scenario: npc %s knowledge %q: invalid san_loss %q", n.ID, k, kn.SanLoss)
-			}
-		}
 	}
 	for _, c := range s.Clues {
 		if c.Location != "" && !locSet[c.Location] {
@@ -122,9 +157,6 @@ func Validate(s *Scenario) error {
 		}
 		if c.Source != "" && !npcSet[c.Source] {
 			return fmt.Errorf("scenario: clue %s references unknown source npc %q", c.ID, c.Source)
-		}
-		if c.SanLoss != "" && !sanLossPattern.MatchString(c.SanLoss) {
-			return fmt.Errorf("scenario: clue %s: invalid san_loss %q", c.ID, c.SanLoss)
 		}
 	}
 	for _, it := range s.Items {
@@ -139,8 +171,6 @@ func Validate(s *Scenario) error {
 			}
 		case "investigator", "none":
 			// no FK
-		default:
-			return fmt.Errorf("scenario: item %s has invalid owner_type %q", it.ID, it.OwnerType)
 		}
 	}
 	for _, kc := range s.KeyClues {
@@ -190,9 +220,6 @@ func validateVariants(s *Scenario, locs, npcs, clues, triggers, endings map[stri
 			return fmt.Errorf("variant: duplicate id %q", v.ID)
 		}
 		seen[v.ID] = true
-		if v.Weight < 0 {
-			return fmt.Errorf("variant %s: weight must be >= 0", v.ID)
-		}
 		if v.Culprit != "" && !npcs[v.Culprit] {
 			return fmt.Errorf("variant %s: culprit references unknown npc %q", v.ID, v.Culprit)
 		}
@@ -201,17 +228,9 @@ func validateVariants(s *Scenario, locs, npcs, clues, triggers, endings map[stri
 				return fmt.Errorf("variant %s: npc_secrets references unknown npc %q", v.ID, npcID)
 			}
 		}
-		for npcID, kmap := range v.NPCKnowledgeOverrides {
+		for npcID := range v.NPCKnowledgeOverrides {
 			if !npcs[npcID] {
 				return fmt.Errorf("variant %s: npc_knowledge_overrides references unknown npc %q", v.ID, npcID)
-			}
-			for k, kn := range kmap {
-				if strings.TrimSpace(kn.Reveal) == "" {
-					return fmt.Errorf("variant %s: npc %s knowledge %q: empty reveal", v.ID, npcID, k)
-				}
-				if kn.SanLoss != "" && !sanLossPattern.MatchString(kn.SanLoss) {
-					return fmt.Errorf("variant %s: npc %s knowledge %q: invalid san_loss %q", v.ID, npcID, k, kn.SanLoss)
-				}
 			}
 		}
 		for clueID, patch := range v.ClueOverrides {
@@ -223,9 +242,6 @@ func validateVariants(s *Scenario, locs, npcs, clues, triggers, endings map[stri
 			}
 			if patch.Source != "" && !npcs[patch.Source] {
 				return fmt.Errorf("variant %s: clue %s patch references unknown source npc %q", v.ID, clueID, patch.Source)
-			}
-			if patch.SanLoss != "" && !sanLossPattern.MatchString(patch.SanLoss) {
-				return fmt.Errorf("variant %s: clue %s patch: invalid san_loss %q", v.ID, clueID, patch.SanLoss)
 			}
 		}
 		for triggerID, patch := range v.TriggerOverrides {
@@ -247,6 +263,13 @@ func validateVariants(s *Scenario, locs, npcs, clues, triggers, endings map[stri
 }
 
 func idsOfEndingsSet(xs []Ending) map[string]bool { return setOf(idsOfEndings(xs)) }
+
+func validateFields(s *Scenario) error {
+	if err := scenarioValidator.Struct(s); err != nil {
+		return fmt.Errorf("scenario: field validation: %w", err)
+	}
+	return nil
+}
 
 func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool) error {
 	if c == nil {

@@ -66,9 +66,9 @@ func TestDispatcher_ToolsContainAll(t *testing.T) {
 	tools := d.Tools()
 	assert.GreaterOrEqual(t, len(tools), 18)
 	names := map[string]bool{}
-	for _, tu := range tools {
-		require.NotNil(t, tu.OfTool)
-		names[tu.OfTool.Name] = true
+	for _, tool := range tools {
+		require.NotEmpty(t, tool.Name)
+		names[tool.Name] = true
 	}
 	for _, expected := range []string{
 		"roll_skill", "roll_damage", "sanity_check", "opposed_roll",

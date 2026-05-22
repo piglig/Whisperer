@@ -65,95 +65,53 @@ func (q *Queries) DeleteSave(ctx context.Context, id string) (int64, error) {
 }
 
 const getSave = `-- name: GetSave :one
-SELECT
-    id,
-    name,
-    scenario_id,
-    variant_id,
-    current_location_id,
-    turn_count,
-    time_of_day,
-    created_at,
-    updated_at
+SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id
 FROM saves
 WHERE id = ?
 `
 
-type GetSaveRow struct {
-	ID                string         `json:"id"`
-	Name              string         `json:"name"`
-	ScenarioID        string         `json:"scenario_id"`
-	VariantID         string         `json:"variant_id"`
-	CurrentLocationID sql.NullString `json:"current_location_id"`
-	TurnCount         int64          `json:"turn_count"`
-	TimeOfDay         string         `json:"time_of_day"`
-	CreatedAt         int64          `json:"created_at"`
-	UpdatedAt         int64          `json:"updated_at"`
-}
-
-func (q *Queries) GetSave(ctx context.Context, id string) (GetSaveRow, error) {
+func (q *Queries) GetSave(ctx context.Context, id string) (Save, error) {
 	row := q.db.QueryRowContext(ctx, getSave, id)
-	var i GetSaveRow
+	var i Save
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.ScenarioID,
-		&i.VariantID,
 		&i.CurrentLocationID,
 		&i.TurnCount,
 		&i.TimeOfDay,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VariantID,
 	)
 	return i, err
 }
 
 const listSaves = `-- name: ListSaves :many
-SELECT
-    id,
-    name,
-    scenario_id,
-    variant_id,
-    current_location_id,
-    turn_count,
-    time_of_day,
-    created_at,
-    updated_at
+SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id
 FROM saves
 ORDER BY updated_at DESC
 `
 
-type ListSavesRow struct {
-	ID                string         `json:"id"`
-	Name              string         `json:"name"`
-	ScenarioID        string         `json:"scenario_id"`
-	VariantID         string         `json:"variant_id"`
-	CurrentLocationID sql.NullString `json:"current_location_id"`
-	TurnCount         int64          `json:"turn_count"`
-	TimeOfDay         string         `json:"time_of_day"`
-	CreatedAt         int64          `json:"created_at"`
-	UpdatedAt         int64          `json:"updated_at"`
-}
-
-func (q *Queries) ListSaves(ctx context.Context) ([]ListSavesRow, error) {
+func (q *Queries) ListSaves(ctx context.Context) ([]Save, error) {
 	rows, err := q.db.QueryContext(ctx, listSaves)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListSavesRow{}
+	items := []Save{}
 	for rows.Next() {
-		var i ListSavesRow
+		var i Save
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.ScenarioID,
-			&i.VariantID,
 			&i.CurrentLocationID,
 			&i.TurnCount,
 			&i.TimeOfDay,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.VariantID,
 		); err != nil {
 			return nil, err
 		}

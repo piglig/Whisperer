@@ -1,10 +1,6 @@
 package agent
 
-import (
-	"strings"
-
-	"github.com/anthropics/anthropic-sdk-go"
-)
+import "strings"
 
 // ModelPricing 是某模型的每百万 token 价格（USD）。
 //
@@ -51,7 +47,7 @@ var pricingTable = []struct {
 //
 // 匹配按"最长前缀优先"：例如 "claude-sonnet-4-5-20250929" 命中 "claude-sonnet-4-5"
 // 而不会被更短的 "claude-sonnet-4" 抢占。
-func PricingFor(model anthropic.Model) ModelPricing {
+func PricingFor(model Model) ModelPricing {
 	name := strings.ToLower(string(model))
 	bestLen := -1
 	var best ModelPricing
@@ -66,7 +62,7 @@ func PricingFor(model anthropic.Model) ModelPricing {
 }
 
 // CostUSD 按价格表计算单次调用的费用。tokens 为零或模型未知时返回 0。
-func CostUSD(model anthropic.Model, inputTokens, outputTokens int64) (inputUSD, outputUSD, totalUSD float64) {
+func CostUSD(model Model, inputTokens, outputTokens int64) (inputUSD, outputUSD, totalUSD float64) {
 	p := PricingFor(model)
 	const million = 1_000_000.0
 	inputUSD = float64(inputTokens) / million * p.InputPerMTok

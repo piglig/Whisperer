@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
-
-	"github.com/anthropics/anthropic-sdk-go"
 )
 
 //go:embed prompts/npc_system.tmpl
@@ -29,12 +27,12 @@ type NPCSpeakRequest struct {
 // NPCAgent 是只生成单段对白的轻量 agent。无工具调用。
 type NPCAgent struct {
 	llm       LLM
-	model     anthropic.Model
+	model     Model
 	maxTokens int64
 }
 
 // NewNPC 构造一个 NPCAgent。model 留空时默认 Haiku。
-func NewNPC(llm LLM, model anthropic.Model) *NPCAgent {
+func NewNPC(llm LLM, model Model) *NPCAgent {
 	if model == "" {
 		model = ModelHelper
 	}
@@ -61,30 +59,17 @@ func (n *NPCAgent) Speak(ctx context.Context, req NPCSpeakRequest) (string, erro
 		userText = "(请按 GM 指示开口说话)"
 	}
 
-	msg, err := n.llm.NewMessage(ctx, anthropic.MessageNewParams{
+	msg, err := n.llm.NewMessage(ctx, MessageRequest{
 		Model:     n.model,
 		MaxTokens: n.maxTokens,
-		System: []anthropic.TextBlockParam{
-			{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()},
-		},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(userText)),
-		},
+		System:    []SystemBlock{{Text: system, CacheEphemeral: true}},
+		Messages:  []MessageParam{NewUserMessage(NewTextBlock(userText))},
 	})
 	if err != nil {
 		return "", fmt.Errorf("NPCAgent: LLM call: %w", err)
 	}
 
-	var b strings.Builder
-	for _, block := range msg.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			if b.Len() > 0 {
-				b.WriteString("\n")
-			}
-			b.WriteString(t.Text)
-		}
-	}
-	out := strings.TrimSpace(b.String())
+	out := strings.TrimSpace(msg.Text())
 	if out == "" {
 		return "", errors.New("NPCAgent: empty response")
 	}

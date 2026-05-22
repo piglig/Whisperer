@@ -13,19 +13,20 @@ import (
 
 // Scenario 是一份完整剧本。
 type Scenario struct {
-	ID        string      `yaml:"id" json:"id"`
-	Title     string      `yaml:"title" json:"title"`
+	ID        string      `yaml:"id" json:"id" validate:"required"`
+	Title     string      `yaml:"title" json:"title" validate:"required"`
 	Version   string      `yaml:"version" json:"version"`
+	Intro     string      `yaml:"intro,omitempty" json:"intro,omitempty"`
 	Truth     string      `yaml:"truth,omitempty" json:"truth,omitempty"`
-	Locations []SLocation `yaml:"locations" json:"locations"`
-	NPCs      []SNPC      `yaml:"npcs" json:"npcs"`
-	Clues     []SClue     `yaml:"clues" json:"clues"`
-	Items     []SItem     `yaml:"items,omitempty" json:"items,omitempty"`
-	Start     Start       `yaml:"start" json:"start"`
+	Locations []SLocation `yaml:"locations" json:"locations" validate:"required,min=1,dive"`
+	NPCs      []SNPC      `yaml:"npcs" json:"npcs" validate:"dive"`
+	Clues     []SClue     `yaml:"clues" json:"clues" validate:"dive"`
+	Items     []SItem     `yaml:"items,omitempty" json:"items,omitempty" validate:"dive"`
+	Start     Start       `yaml:"start" json:"start" validate:"required"`
 	KeyClues  []string    `yaml:"key_clues" json:"key_clues"`
-	Triggers  []Trigger   `yaml:"triggers,omitempty" json:"triggers,omitempty"`
-	Endings   []Ending    `yaml:"endings,omitempty" json:"endings,omitempty"`
-	Variants  []Variant   `yaml:"variants,omitempty" json:"variants,omitempty"`
+	Triggers  []Trigger   `yaml:"triggers,omitempty" json:"triggers,omitempty" validate:"dive"`
+	Endings   []Ending    `yaml:"endings,omitempty" json:"endings,omitempty" validate:"dive"`
+	Variants  []Variant   `yaml:"variants,omitempty" json:"variants,omitempty" validate:"dive"`
 }
 
 type SLocation struct {
@@ -64,8 +65,8 @@ type SNPC struct {
 //	    san_loss: "0/1d3"
 type NPCKnowledge struct {
 	RequiresPhrases []string `yaml:"requires_phrases,omitempty" json:"requires_phrases,omitempty"`
-	Reveal          string   `yaml:"reveal" json:"reveal"`
-	SanLoss         string   `yaml:"san_loss,omitempty" json:"san_loss,omitempty"`
+	Reveal          string   `yaml:"reveal" json:"reveal" validate:"required"`
+	SanLoss         string   `yaml:"san_loss,omitempty" json:"san_loss,omitempty" validate:"omitempty,sanloss"`
 }
 
 // UnmarshalYAML 让 NPCKnowledge 既能从字符串解析（短形式），也能从 mapping 解析。
@@ -98,22 +99,22 @@ type SClue struct {
 	Description string `yaml:"description" json:"description"`
 	Tier        int    `yaml:"tier,omitempty" json:"tier,omitempty"` // 1/2/3=主线层级；0 视为 red herring
 	Location    string `yaml:"location,omitempty" json:"location,omitempty"`
-	Source      string `yaml:"source,omitempty" json:"source,omitempty"`     // 哪个 NPC 持有；可空
-	SanLoss     string `yaml:"san_loss,omitempty" json:"san_loss,omitempty"` // "0/1" 或 "1/1d4"
+	Source      string `yaml:"source,omitempty" json:"source,omitempty"`                                  // 哪个 NPC 持有；可空
+	SanLoss     string `yaml:"san_loss,omitempty" json:"san_loss,omitempty" validate:"omitempty,sanloss"` // "0/1" 或 "1/1d4"
 }
 
 type SItem struct {
 	ID          string `yaml:"id" json:"id"`
 	Name        string `yaml:"name" json:"name"`
 	Description string `yaml:"description" json:"description"`
-	OwnerType   string `yaml:"owner_type" json:"owner_type"` // npc|location|investigator|none
+	OwnerType   string `yaml:"owner_type" json:"owner_type" validate:"oneof=npc location investigator none"` // npc|location|investigator|none
 	OwnerID     string `yaml:"owner_id,omitempty" json:"owner_id,omitempty"`
 }
 
 // Start 描述剧本的初始状态。
 type Start struct {
-	Location  string `yaml:"location" json:"location"`
-	TimeOfDay string `yaml:"time_of_day,omitempty" json:"time_of_day,omitempty"`
+	Location  string `yaml:"location" json:"location" validate:"required"`
+	TimeOfDay string `yaml:"time_of_day,omitempty" json:"time_of_day,omitempty" validate:"omitempty,oneof=morning afternoon night"`
 }
 
 // Trigger 是一条 "条件 → 动作" 规则。MVP 全部 once（fired 后不再触发）。
@@ -142,7 +143,7 @@ type Condition struct {
 	NPCDead         string  `yaml:"npc_dead,omitempty" json:"npc_dead,omitempty"`
 	NPCRelationLT   *RelChk `yaml:"npc_relation_lt,omitempty" json:"npc_relation_lt,omitempty"`
 	NPCRelationGT   *RelChk `yaml:"npc_relation_gt,omitempty" json:"npc_relation_gt,omitempty"`
-	TimeOfDay       string  `yaml:"time_of_day,omitempty" json:"time_of_day,omitempty"`
+	TimeOfDay       string  `yaml:"time_of_day,omitempty" json:"time_of_day,omitempty" validate:"omitempty,oneof=morning afternoon night"`
 	TurnGE          int     `yaml:"turn_ge,omitempty" json:"turn_ge,omitempty"`
 
 	// TriggerFired 在 Endings 中常用：检查某 trigger 是否已经发生过。
@@ -165,8 +166,8 @@ type Action struct {
 }
 
 type ActionAddEvent struct {
-	Type        string `yaml:"type" json:"type"`
-	Description string `yaml:"description" json:"description"`
+	Type        string `yaml:"type" json:"type" validate:"required"`
+	Description string `yaml:"description" json:"description" validate:"required"`
 }
 
 type ActionMarkClueFound struct {
@@ -193,7 +194,7 @@ type ActionUpdateNPCRelation struct {
 // 玩家不可见 variant 选择——结局页才显示"本局真凶"。
 type Variant struct {
 	ID                    string                             `yaml:"id" json:"id"`
-	Weight                int                                `yaml:"weight,omitempty" json:"weight,omitempty"`
+	Weight                int                                `yaml:"weight,omitempty" json:"weight,omitempty" validate:"gte=0"`
 	Truth                 string                             `yaml:"truth,omitempty" json:"truth,omitempty"`
 	Culprit               string                             `yaml:"culprit,omitempty" json:"culprit,omitempty"`
 	NPCSecrets            map[string]string                  `yaml:"npc_secrets,omitempty" json:"npc_secrets,omitempty"`
@@ -209,7 +210,7 @@ type CluePatch struct {
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	Location    string `yaml:"location,omitempty" json:"location,omitempty"`
 	Source      string `yaml:"source,omitempty" json:"source,omitempty"`
-	SanLoss     string `yaml:"san_loss,omitempty" json:"san_loss,omitempty"`
+	SanLoss     string `yaml:"san_loss,omitempty" json:"san_loss,omitempty" validate:"omitempty,sanloss"`
 }
 
 // ConditionPatch 替换某 trigger 的 When 条件。整体替换而非合并——条件树语义复杂，

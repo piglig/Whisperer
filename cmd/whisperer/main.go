@@ -30,9 +30,9 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 
@@ -69,7 +69,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		os.Exit(2)
 	}
-	fileCfg.EnvOverlay()
 
 	// 首次运行向导：configPath 文件不存在 + stdin 是 tty + 没传 init 子命令时
 	// 自动触发，让用户写一个 config 再继续。
@@ -87,34 +86,33 @@ func main() {
 			fmt.Fprintf(os.Stderr, "config: %v\n", err)
 			os.Exit(2)
 		}
-		fileCfg.EnvOverlay()
 	}
 
 	// Phase 2: 注册全部 flag，把 fileCfg 作为它们的初始值。flag.Parse 之后，
 	// 命令行显式给的 flag 会覆盖 fileCfg 上的值；没给的就保留 fileCfg / 默认值。
 	_ = flag.String("config", configPath, "config file path (default: $XDG_CONFIG_HOME/whisperer/config.toml)")
 
-	dbPath := flag.String("db", orDefault(fileCfg.DBPath, "whisperer.db"), "SQLite save file path")
-	memDir := flag.String("memory", orDefault(fileCfg.MemDir, "mem"), "memory persistent dir; empty for in-memory")
-	scenarioID := flag.String("scenario", orDefault(fileCfg.Scenario, "fog_harbor"), "bundled scenario id")
+	dbPath := flag.String("db", fileCfg.DBPath, "SQLite save file path")
+	memDir := flag.String("memory", fileCfg.MemDir, "memory persistent dir; empty for in-memory")
+	scenarioID := flag.String("scenario", fileCfg.Scenario, "bundled scenario id")
 	saveID := flag.String("save", fileCfg.Save, "existing save id to load; empty creates a new save")
-	provider := flag.String("provider", orDefault(fileCfg.Provider, agent.AutoProvider()), "LLM provider: anthropic | openrouter | openai | grok | gemini")
+	provider := flag.String("provider", defaultProvider(fileCfg.Provider), "LLM provider: anthropic | openrouter | openai | grok | gemini")
 	apiKey := flag.String("api-key", "", "API key (overrides provider env var)")
 	modelOverride := flag.String("model", fileCfg.Model, "override GM model id (full vendor/model on OpenRouter)")
 	modelHelperOverride := flag.String("model-helper", fileCfg.ModelHelper, "override Haiku/helper model id")
 	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
 	variantID := flag.String("variant", fileCfg.Variant, "force a specific variant id (default: weighted random)")
 	seed := flag.Int64("seed", fileCfg.Seed, "deterministic variant selection seed (0 = unix nano)")
-	metaPath := flag.String("meta", orDefault(fileCfg.MetaPath, "runs/meta.json"), "cross-run meta file path; '-' to disable")
-	logFormat := flag.String("log-format", orDefault(fileCfg.LogFormat, "text"), "log handler format: text | json")
-	logLevel := flag.String("log-level", orDefault(fileCfg.LogLevel, "info"), "log level: debug | info | warn | error")
-	embedderProvider := flag.String("embedder", orDefault(fileCfg.Embedder.Provider, "fake"), "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
+	metaPath := flag.String("meta", fileCfg.MetaPath, "cross-run meta file path; '-' to disable")
+	logFormat := flag.String("log-format", fileCfg.LogFormat, "log handler format: text | json")
+	logLevel := flag.String("log-level", fileCfg.LogLevel, "log level: debug | info | warn | error")
+	embedderProvider := flag.String("embedder", fileCfg.Embedder.Provider, "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
 	embedderModel := flag.String("embedder-model", fileCfg.Embedder.Model, "embedder model id (provider-specific; defaults supplied for openai/cohere)")
 	embedderKey := flag.String("embedder-key", "", "embedder API key (overrides EMBEDDER_API_KEY)")
 	embedderBaseURL := flag.String("embedder-base-url", fileCfg.Embedder.BaseURL, "embedder base URL (required for openai-compat; optional for ollama)")
-	llmMaxRetries := flag.Int("llm-max-retries", orInt(fileCfg.LLMRetriesRaw, 3), "max retries on transient LLM failures (0 = SDK default)")
-	llmTimeout := flag.Duration("llm-timeout", orDuration(fileCfg.LLMTimeout, 120*time.Second), "per-LLM-call hard timeout (0 = no timeout)")
-	traceDir := flag.String("trace-dir", orDefault(fileCfg.TraceDir, "runs"), "directory to append per-turn JSONL traces; '-' to disable")
+	llmMaxRetries := flag.Int("llm-max-retries", fileCfg.LLMMaxRetries, "max retries on transient LLM failures (0 = SDK default)")
+	llmTimeout := flag.Duration("llm-timeout", fileCfg.LLMTimeout, "per-LLM-call hard timeout (0 = no timeout)")
+	traceDir := flag.String("trace-dir", fileCfg.TraceDir, "directory to append per-turn JSONL traces; '-' to disable")
 	otelExporter := flag.String("otel", "noop", "OpenTelemetry exporter: noop | stdout | otlp (OTLP endpoint via OTEL_EXPORTER_OTLP_ENDPOINT)")
 	lang := flag.String("lang", fileCfg.Lang, "UI language tag (zh-CN | en | auto); empty/auto = detect from $LANG / $LC_ALL")
 	flag.Parse()
@@ -225,10 +223,10 @@ func main() {
 
 	llm, modelGM, modelNPC := agent.BuildLLM(*provider, resolvedKey, *llmMaxRetries, *llmTimeout)
 	if *modelOverride != "" {
-		modelGM = anthropic.Model(*modelOverride)
+		modelGM = agent.Model(*modelOverride)
 	}
 	if *modelHelperOverride != "" {
-		modelNPC = anthropic.Model(*modelHelperOverride)
+		modelNPC = agent.Model(*modelHelperOverride)
 	}
 
 	orch, err := orchestrator.New(orchestrator.Config{
@@ -332,14 +330,7 @@ func ensureSaveWithVariant(
 	}); err != nil {
 		return "", nil, "", "", false, err
 	}
-	variantHint := ""
-	if chosen != "" {
-		variantHint = fmt.Sprintf("（variant: %s）", chosen)
-	}
-	opening := fmt.Sprintf(
-		"《%s》开场%s。剧本 id: %s。当前位置: %s。\n（输入 /help 查看命令；输入你想做的事开始游戏。）",
-		base.Title, variantHint, base.ID, base.Start.Location,
-	)
+	opening := scenario.RenderOpeningBriefing(eff)
 	return id, eff, chosen, opening, true, nil
 }
 
@@ -385,28 +376,11 @@ func preParseConfigFlag(args []string) string {
 	return ""
 }
 
-// orDefault 返回 v 非空时的 v，否则 fallback。
-func orDefault(v, fallback string) string {
-	if v != "" {
-		return v
+func defaultProvider(provider string) string {
+	if provider != "" {
+		return provider
 	}
-	return fallback
-}
-
-// orInt 返回 *p 时的 *p（保留显式 0），否则 fallback。
-func orInt(p *int, fallback int) int {
-	if p != nil {
-		return *p
-	}
-	return fallback
-}
-
-// orDuration 类似 orDefault，但 0 视为未设。
-func orDuration(v, fallback time.Duration) time.Duration {
-	if v > 0 {
-		return v
-	}
-	return fallback
+	return agent.AutoProvider()
 }
 
 func fail(msg string, err error) {

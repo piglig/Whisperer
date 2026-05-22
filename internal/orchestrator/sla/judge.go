@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
-
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 )
 
@@ -164,11 +162,11 @@ var knowledgeProjectionKeywords = []string{
 // 单次回合最多两次额外 LLM 调用（NPC + Knowledge 各一）；显式启用方可承担成本。
 type HaikuJudge struct {
 	llm   agent.LLM
-	model anthropic.Model
+	model agent.Model
 }
 
 // NewHaikuJudge 构造 HaikuJudge。model 留空时默认 Haiku 4.5。
-func NewHaikuJudge(llm agent.LLM, model anthropic.Model) *HaikuJudge {
+func NewHaikuJudge(llm agent.LLM, model agent.Model) *HaikuJudge {
 	if model == "" {
 		model = agent.ModelHelper
 	}
@@ -235,26 +233,20 @@ func (j *HaikuJudge) JudgeKnowledgeProjection(ctx context.Context, in JudgeKnowl
 }
 
 func (j *HaikuJudge) askJudge(ctx context.Context, userPrompt string) (bool, string, error) {
-	msg, err := j.llm.NewMessage(ctx, anthropic.MessageNewParams{
+	msg, err := j.llm.NewMessage(ctx, agent.MessageRequest{
 		Model:     j.model,
 		MaxTokens: 256,
-		System:    []anthropic.TextBlockParam{{Text: judgeRubric}},
-		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userPrompt))},
+		System:    []agent.SystemBlock{{Text: judgeRubric}},
+		Messages:  []agent.MessageParam{agent.NewUserMessage(agent.NewTextBlock(userPrompt))},
 	})
 	if err != nil {
 		return false, "", err
-	}
-	var text strings.Builder
-	for _, b := range msg.Content {
-		if t, ok := b.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
-		}
 	}
 	var parsed struct {
 		Violation bool   `json:"violation"`
 		Reason    string `json:"reason"`
 	}
-	raw := strings.TrimSpace(text.String())
+	raw := strings.TrimSpace(msg.Text())
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		// LLM 输出不规范 → 视为通过，避免误伤；记录在 reason 中以便上层日志。
 		//nolint:nilerr // fail-open by design: judge unparseable should not block the turn

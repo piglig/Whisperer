@@ -15,8 +15,10 @@ func TestLoad_MissingFileReturnsZeroConfig(t *testing.T) {
 	cfg, err := Load(filepath.Join(dir, "nope.toml"))
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	assert.Equal(t, "", cfg.Provider)
-	assert.Equal(t, time.Duration(0), cfg.LLMTimeout)
+	assert.Equal(t, "fog_harbor", cfg.Scenario)
+	assert.Equal(t, "whisperer.db", cfg.DBPath)
+	assert.Equal(t, 120*time.Second, cfg.LLMTimeout)
+	assert.Equal(t, 3, cfg.LLMMaxRetries)
 }
 
 func TestLoad_FullToml(t *testing.T) {
@@ -76,14 +78,33 @@ func TestLoad_TomlExplicitZeroRetries(t *testing.T) {
 	assert.Equal(t, 0, *cfg.LLMRetriesRaw)
 }
 
-func TestEnvOverlay_OverwritesEmptyAndPresentFields(t *testing.T) {
-	cfg := &Config{Provider: "anthropic", Scenario: "fog_harbor"}
+func TestLoad_EnvOverwritesToml(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+provider = "anthropic"
+scenario = "fog_harbor"
+`), 0o644))
 	t.Setenv("WHISPERER_PROVIDER", "openrouter")
 	t.Setenv("WHISPERER_LOG_LEVEL", "warn")
-	cfg.EnvOverlay()
+	cfg, err := Load(path)
+	require.NoError(t, err)
 	assert.Equal(t, "openrouter", cfg.Provider, "env should override toml")
 	assert.Equal(t, "warn", cfg.LogLevel)
 	assert.Equal(t, "fog_harbor", cfg.Scenario, "untouched fields stay")
+}
+
+func TestLoad_EnvParsesScalarOverrides(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WHISPERER_LLM_TIMEOUT", "15s")
+	t.Setenv("WHISPERER_LLM_MAX_RETRIES", "0")
+
+	cfg, err := Load(filepath.Join(dir, "missing.toml"))
+	require.NoError(t, err)
+	assert.Equal(t, 15*time.Second, cfg.LLMTimeout)
+	assert.Equal(t, 0, cfg.LLMMaxRetries)
+	require.NotNil(t, cfg.LLMRetriesRaw)
+	assert.Equal(t, 0, *cfg.LLMRetriesRaw)
 }
 
 func TestDefaultPath_HonorsXDG(t *testing.T) {
