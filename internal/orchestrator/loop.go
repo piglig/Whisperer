@@ -27,6 +27,7 @@ type TurnResult struct {
 	Fired     []scenario.FiredTrigger `json:"fired,omitempty"`
 	Drift     scenario.DriftStatus    `json:"drift"`
 	Ending    *scenario.Ending        `json:"ending,omitempty"`
+	Report    *scenario.CaseReport    `json:"report,omitempty"`
 	SLAReport sla.Report              `json:"sla_report"`
 	Save      store.Save              `json:"save"`
 }
@@ -67,6 +68,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		firedList  []scenario.FiredTrigger
 		drift      scenario.DriftStatus
 		ending     *scenario.Ending
+		caseReport *scenario.CaseReport
 		finalSave  store.Save
 	)
 
@@ -188,6 +190,12 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 				return fmt.Errorf("re-read save: %w", err)
 			}
 			finalSave = sv
+			if ending != nil {
+				caseReport, err = buildCaseReport(ctx, repo, o.cfg.SaveID, o.cfg.Scenario, finalSave, ending, o.cfg.VariantID)
+				if err != nil {
+					return fmt.Errorf("case report: %w", err)
+				}
+			}
 			return nil
 		})
 		if txErr == nil {
@@ -218,6 +226,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		Fired:     firedList,
 		Drift:     drift,
 		Ending:    ending,
+		Report:    caseReport,
 		SLAReport: report,
 		Save:      finalSave,
 	}

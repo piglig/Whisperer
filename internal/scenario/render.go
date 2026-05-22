@@ -29,12 +29,39 @@ func RenderOpeningBriefing(s *Scenario) string {
 		b.WriteString(fallbackOpeningIntro(s))
 	}
 	b.WriteString("\n\n")
+	if objectives := openingObjectives(s); len(objectives) > 0 {
+		b.WriteString("当前目标：\n")
+		for _, objective := range objectives {
+			fmt.Fprintf(&b, "- %s\n", objective)
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("可以从这些行动开始：\n")
 	for _, action := range openingActions(s) {
 		fmt.Fprintf(&b, "- %s\n", action)
 	}
 	b.WriteString("\n直接输入一句自然语言即可，例：\"我查看公告栏上的失踪启事\"。")
 	return strings.TrimSpace(b.String())
+}
+
+func openingObjectives(s *Scenario) []string {
+	if s == nil {
+		return nil
+	}
+	if len(s.Objectives) == 0 {
+		return nil
+	}
+	out := []string{}
+	for _, obj := range s.Objectives {
+		if strings.EqualFold(obj.Stage, "opening") || strings.EqualFold(obj.Stage, "act1") {
+			out = append(out, obj.Title)
+			for _, step := range obj.Steps {
+				out = append(out, "  - "+step)
+			}
+			break
+		}
+	}
+	return out
 }
 
 func fallbackOpeningIntro(s *Scenario) string {
@@ -56,17 +83,52 @@ func fallbackOpeningIntro(s *Scenario) string {
 func openingActions(s *Scenario) []string {
 	loc := startLocation(s)
 	actions := []string{}
-	if loc.Name != "" {
+	for _, lead := range loc.Leads {
+		if strings.TrimSpace(lead) != "" {
+			actions = append(actions, strings.TrimSpace(lead))
+		}
+	}
+	if len(actions) == 0 && loc.Name != "" {
 		actions = append(actions, "观察"+loc.Name+"，寻找异常痕迹或可调查的物件")
 	}
-	if names := startNPCNames(s); len(names) > 0 {
-		actions = append(actions, "与"+names[0]+"交谈，询问最近发生了什么")
+	if npc := firstStartNPC(s); npc.Name != "" {
+		if npc.OpeningLine != "" {
+			actions = append(actions, fmt.Sprintf("与%s交谈，她也许会说：%s", npc.Name, strings.TrimSpace(npc.OpeningLine)))
+		} else {
+			actions = append(actions, "与"+npc.Name+"交谈，询问最近发生了什么")
+		}
 	}
-	actions = append(actions,
+	actions = appendUniqueStrings(actions,
 		"沿着可见道路前往酒馆、巡警所、教堂或灯塔等地点",
 		"查看自己的案件卡，确认当前地点、人物和已发现线索",
 	)
 	return actions
+}
+
+func firstStartNPC(s *Scenario) SNPC {
+	if names := startNPCNames(s); len(names) > 0 {
+		for _, npc := range s.NPCs {
+			if npc.Name == names[0] {
+				return npc
+			}
+		}
+	}
+	return SNPC{}
+}
+
+func appendUniqueStrings(values []string, additions ...string) []string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	for _, value := range additions {
+		if value == "" || seen[value] {
+			continue
+		}
+		values = append(values, value)
+		seen[value] = true
+	}
+	return values
 }
 
 func startLocation(s *Scenario) SLocation {
@@ -92,6 +154,75 @@ func startNPCNames(s *Scenario) []string {
 		}
 	}
 	return names
+}
+
+// RenderPlayerGuidance returns player-facing scenario scaffolding for the GM.
+func RenderPlayerGuidance(s *Scenario) string {
+	if s == nil {
+		return ""
+	}
+	var b strings.Builder
+	if len(s.Objectives) > 0 {
+		b.WriteString("## 目标\n")
+		for _, obj := range s.Objectives {
+			fmt.Fprintf(&b, "- %s：%s\n", obj.Stage, obj.Title)
+			for _, step := range obj.Steps {
+				fmt.Fprintf(&b, "  - %s\n", strings.TrimSpace(step))
+			}
+		}
+	}
+	if len(s.Locations) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## 地点行动提示\n")
+		for _, loc := range s.Locations {
+			if len(loc.Leads) == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s\n", loc.Name)
+			for _, lead := range loc.Leads {
+				fmt.Fprintf(&b, "  - %s\n", strings.TrimSpace(lead))
+			}
+		}
+	}
+	if len(s.NPCs) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## NPC 初见\n")
+		for _, npc := range s.NPCs {
+			if npc.FirstImpression == "" && npc.OpeningLine == "" {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s\n", npc.Name)
+			if npc.FirstImpression != "" {
+				fmt.Fprintf(&b, "  - 初见：%s\n", strings.TrimSpace(npc.FirstImpression))
+			}
+			if npc.OpeningLine != "" {
+				fmt.Fprintf(&b, "  - 第一句：%s\n", strings.TrimSpace(npc.OpeningLine))
+			}
+			for _, opt := range npc.DialogueOptions {
+				fmt.Fprintf(&b, "  - 可问：%s → %s\n", strings.TrimSpace(opt.Label), strings.TrimSpace(opt.Prompt))
+			}
+		}
+	}
+	if len(s.Items) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## 物品行动\n")
+		for _, item := range s.Items {
+			if len(item.Actions) == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s\n", item.Name)
+			for _, action := range item.Actions {
+				fmt.Fprintf(&b, "  - %s → %s\n", strings.TrimSpace(action.Label), strings.TrimSpace(action.Prompt))
+			}
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // RenderNPCSecrets 返回每位 NPC 的隐藏动机表（markdown）。

@@ -13,38 +13,59 @@ import (
 
 // Scenario 是一份完整剧本。
 type Scenario struct {
-	ID        string      `yaml:"id" json:"id" validate:"required"`
-	Title     string      `yaml:"title" json:"title" validate:"required"`
-	Version   string      `yaml:"version" json:"version"`
-	Intro     string      `yaml:"intro,omitempty" json:"intro,omitempty"`
-	Truth     string      `yaml:"truth,omitempty" json:"truth,omitempty"`
-	Locations []SLocation `yaml:"locations" json:"locations" validate:"required,min=1,dive"`
-	NPCs      []SNPC      `yaml:"npcs" json:"npcs" validate:"dive"`
-	Clues     []SClue     `yaml:"clues" json:"clues" validate:"dive"`
-	Items     []SItem     `yaml:"items,omitempty" json:"items,omitempty" validate:"dive"`
-	Start     Start       `yaml:"start" json:"start" validate:"required"`
-	KeyClues  []string    `yaml:"key_clues" json:"key_clues"`
-	Triggers  []Trigger   `yaml:"triggers,omitempty" json:"triggers,omitempty" validate:"dive"`
-	Endings   []Ending    `yaml:"endings,omitempty" json:"endings,omitempty" validate:"dive"`
-	Variants  []Variant   `yaml:"variants,omitempty" json:"variants,omitempty" validate:"dive"`
+	ID         string      `yaml:"id" json:"id" validate:"required"`
+	Title      string      `yaml:"title" json:"title" validate:"required"`
+	Version    string      `yaml:"version" json:"version"`
+	Intro      string      `yaml:"intro,omitempty" json:"intro,omitempty"`
+	Objectives []Objective `yaml:"objectives,omitempty" json:"objectives,omitempty" validate:"dive"`
+	Culprit    string      `yaml:"culprit,omitempty" json:"culprit,omitempty"`
+	Truth      string      `yaml:"truth,omitempty" json:"truth,omitempty"`
+	Locations  []SLocation `yaml:"locations" json:"locations" validate:"required,min=1,dive"`
+	NPCs       []SNPC      `yaml:"npcs" json:"npcs" validate:"dive"`
+	Clues      []SClue     `yaml:"clues" json:"clues" validate:"dive"`
+	Items      []SItem     `yaml:"items,omitempty" json:"items,omitempty" validate:"dive"`
+	Start      Start       `yaml:"start" json:"start" validate:"required"`
+	KeyClues   []string    `yaml:"key_clues" json:"key_clues"`
+	Triggers   []Trigger   `yaml:"triggers,omitempty" json:"triggers,omitempty" validate:"dive"`
+	Endings    []Ending    `yaml:"endings,omitempty" json:"endings,omitempty" validate:"dive"`
+	Variants   []Variant   `yaml:"variants,omitempty" json:"variants,omitempty" validate:"dive"`
 }
 
 type SLocation struct {
 	ID          string   `yaml:"id" json:"id"`
 	Name        string   `yaml:"name" json:"name"`
 	Description string   `yaml:"description" json:"description"`
+	Leads       []string `yaml:"leads,omitempty" json:"leads,omitempty"`
 	ParentID    string   `yaml:"parent,omitempty" json:"parent,omitempty"`
 	Connections []string `yaml:"connections,omitempty" json:"connections,omitempty"`
+}
+
+type Objective struct {
+	Stage string   `yaml:"stage" json:"stage" validate:"required"`
+	Title string   `yaml:"title" json:"title" validate:"required"`
+	Steps []string `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
 type SNPC struct {
 	ID               string                  `yaml:"id" json:"id"`
 	Name             string                  `yaml:"name" json:"name"`
 	Personality      string                  `yaml:"personality" json:"personality"`
+	FirstImpression  string                  `yaml:"first_impression,omitempty" json:"first_impression,omitempty"`
+	OpeningLine      string                  `yaml:"opening_line,omitempty" json:"opening_line,omitempty"`
+	DialogueOptions  []DialogueOption        `yaml:"dialogue_options,omitempty" json:"dialogue_options,omitempty" validate:"dive"`
 	Secret           string                  `yaml:"secret,omitempty" json:"secret,omitempty"`
 	Knowledge        map[string]NPCKnowledge `yaml:"knowledge,omitempty" json:"knowledge,omitempty"`
 	RelationToPlayer int                     `yaml:"relation_to_player,omitempty" json:"relation_to_player,omitempty"`
 	Location         string                  `yaml:"location,omitempty" json:"location,omitempty"`
+}
+
+type DialogueOption struct {
+	ID              string   `yaml:"id" json:"id" validate:"required"`
+	Label           string   `yaml:"label" json:"label" validate:"required"`
+	Prompt          string   `yaml:"prompt" json:"prompt" validate:"required"`
+	Stages          []string `yaml:"stages,omitempty" json:"stages,omitempty"`
+	RequiresClues   []string `yaml:"requires_clues,omitempty" json:"requires_clues,omitempty"`
+	SuppressIfClues []string `yaml:"suppress_if_clues,omitempty" json:"suppress_if_clues,omitempty"`
 }
 
 // NPCKnowledge 是 NPC 持有的一条隐藏知识。requires_phrases 非空时表示玩家必须用其中
@@ -104,11 +125,23 @@ type SClue struct {
 }
 
 type SItem struct {
-	ID          string `yaml:"id" json:"id"`
-	Name        string `yaml:"name" json:"name"`
-	Description string `yaml:"description" json:"description"`
-	OwnerType   string `yaml:"owner_type" json:"owner_type" validate:"oneof=npc location investigator none"` // npc|location|investigator|none
-	OwnerID     string `yaml:"owner_id,omitempty" json:"owner_id,omitempty"`
+	ID          string       `yaml:"id" json:"id"`
+	Name        string       `yaml:"name" json:"name"`
+	Description string       `yaml:"description" json:"description"`
+	OwnerType   string       `yaml:"owner_type" json:"owner_type" validate:"oneof=npc location investigator none"` // npc|location|investigator|none
+	OwnerID     string       `yaml:"owner_id,omitempty" json:"owner_id,omitempty"`
+	Actions     []ItemAction `yaml:"actions,omitempty" json:"actions,omitempty" validate:"dive"`
+}
+
+type ItemAction struct {
+	ID              string   `yaml:"id" json:"id" validate:"required"`
+	Label           string   `yaml:"label" json:"label" validate:"required"`
+	Prompt          string   `yaml:"prompt" json:"prompt" validate:"required"`
+	Stages          []string `yaml:"stages,omitempty" json:"stages,omitempty"`
+	Locations       []string `yaml:"locations,omitempty" json:"locations,omitempty"`
+	OwnerTypes      []string `yaml:"owner_types,omitempty" json:"owner_types,omitempty"`
+	RequiresClues   []string `yaml:"requires_clues,omitempty" json:"requires_clues,omitempty"`
+	SuppressIfClues []string `yaml:"suppress_if_clues,omitempty" json:"suppress_if_clues,omitempty"`
 }
 
 // Start 描述剧本的初始状态。
@@ -163,6 +196,7 @@ type Action struct {
 	UpdateNPCRelation *ActionUpdateNPCRelation `yaml:"update_npc_relation,omitempty" json:"update_npc_relation,omitempty"`
 	KillNPC           string                   `yaml:"kill_npc,omitempty" json:"kill_npc,omitempty"`
 	AdvanceTime       int                      `yaml:"advance_time,omitempty" json:"advance_time,omitempty"`
+	SetStage          string                   `yaml:"set_stage,omitempty" json:"set_stage,omitempty"`
 }
 
 type ActionAddEvent struct {

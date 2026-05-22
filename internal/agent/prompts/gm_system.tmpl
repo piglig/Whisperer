@@ -66,6 +66,15 @@ When the investigator possesses a relevant skill at sufficient value (≥ 1 succ
 {{ .ClueAtlas }}
 {{- end }}
 
+{{- if .PlayerGuidance }}
+
+# 玩家引导素材（玩家可见，不含真相）
+
+用这些目标、地点行动提示、NPC 初见印象来帮助玩家理解"现在能做什么"。当玩家迷茫或输入很泛时，优先基于这里给出 2–3 个具体可执行选择；不要暴露 GM-only 真相。
+
+{{ .PlayerGuidance }}
+{{- end }}
+
 {{- if .PlayerPrior }}
 
 # 玩家先验（跨周目 meta — 仅 GM 可见）

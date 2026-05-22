@@ -16,12 +16,13 @@ INSERT INTO saves (
     name,
     scenario_id,
     variant_id,
+    stage,
     current_location_id,
     turn_count,
     time_of_day,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateSaveParams struct {
@@ -29,6 +30,7 @@ type CreateSaveParams struct {
 	Name              string         `json:"name"`
 	ScenarioID        string         `json:"scenario_id"`
 	VariantID         string         `json:"variant_id"`
+	Stage             string         `json:"stage"`
 	CurrentLocationID sql.NullString `json:"current_location_id"`
 	TurnCount         int64          `json:"turn_count"`
 	TimeOfDay         string         `json:"time_of_day"`
@@ -42,6 +44,7 @@ func (q *Queries) CreateSave(ctx context.Context, arg CreateSaveParams) error {
 		arg.Name,
 		arg.ScenarioID,
 		arg.VariantID,
+		arg.Stage,
 		arg.CurrentLocationID,
 		arg.TurnCount,
 		arg.TimeOfDay,
@@ -65,7 +68,7 @@ func (q *Queries) DeleteSave(ctx context.Context, id string) (int64, error) {
 }
 
 const getSave = `-- name: GetSave :one
-SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id
+SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id, stage
 FROM saves
 WHERE id = ?
 `
@@ -83,12 +86,13 @@ func (q *Queries) GetSave(ctx context.Context, id string) (Save, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.VariantID,
+		&i.Stage,
 	)
 	return i, err
 }
 
 const listSaves = `-- name: ListSaves :many
-SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id
+SELECT id, name, scenario_id, current_location_id, turn_count, time_of_day, created_at, updated_at, variant_id, stage
 FROM saves
 ORDER BY updated_at DESC
 `
@@ -112,6 +116,7 @@ func (q *Queries) ListSaves(ctx context.Context) ([]Save, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.VariantID,
+			&i.Stage,
 		); err != nil {
 			return nil, err
 		}
@@ -124,6 +129,26 @@ func (q *Queries) ListSaves(ctx context.Context) ([]Save, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setStage = `-- name: SetStage :execrows
+UPDATE saves
+SET stage = ?, updated_at = ?
+WHERE id = ?
+`
+
+type SetStageParams struct {
+	Stage     string `json:"stage"`
+	UpdatedAt int64  `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) SetStage(ctx context.Context, arg SetStageParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setStage, arg.Stage, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setTimeOfDay = `-- name: SetTimeOfDay :execrows

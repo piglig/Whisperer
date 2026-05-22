@@ -33,8 +33,11 @@ func TestRenderSystemPrompt_RichSnapshot(t *testing.T) {
 	s, err := o.renderSystemPrompt(ctx)
 	require.NoError(t, err)
 	assert.Contains(t, s, "回合 2")
+	assert.Contains(t, s, "当前阶段 opening")
 	assert.Contains(t, s, "Lyra")
 	assert.Contains(t, s, "雾港码头")
+	assert.Contains(t, s, "玩家引导素材")
+	assert.Contains(t, s, "查看公告栏")
 	assert.Contains(t, s, "事件 F", "应包含最近事件")
 	assert.NotContains(t, s, "事件 A", "最早事件应被截断")
 }
@@ -185,6 +188,7 @@ func TestRenderSystemPrompt_InjectsTruthAndPrior(t *testing.T) {
 	assert.Contains(t, out, "NPC 秘密")
 	assert.Contains(t, out, "线索三层网")
 	assert.Contains(t, out, "Tier 1")
+	assert.Contains(t, out, "NPC 初见")
 
 	// 未配置 Meta 时不出现"玩家先验"段
 	assert.NotContains(t, out, "玩家先验")

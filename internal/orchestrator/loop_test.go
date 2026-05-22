@@ -214,6 +214,8 @@ func TestRunTurn_EndingForcedOnZeroHP(t *testing.T) {
 	require.NotNil(t, res.Ending)
 	assert.Equal(t, "failure", res.Ending.Kind)
 	assert.True(t, res.SLAReport.EndingForced)
+	require.NotNil(t, res.Report)
+	assert.Equal(t, "investigator_lost", res.Report.Ending.ID)
 }
 
 func TestRunTurn_SLARetry(t *testing.T) {

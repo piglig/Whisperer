@@ -27,6 +27,8 @@ type PromptContext struct {
 	NPCKnowledge string
 	// ClueAtlas 是 tier 分级的线索网，让 GM 知道现在玩家在哪一层。
 	ClueAtlas string
+	// PlayerGuidance 是玩家可见的目标、地点行动提示与 NPC 初见素材。
+	PlayerGuidance string
 	// PlayerPrior 是跨周目 meta 渲染——玩家"已活过几次"、看过哪些 variant。GM 可用于"似曾相识"暗示。
 	PlayerPrior string
 }

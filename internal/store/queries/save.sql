@@ -4,12 +4,13 @@ INSERT INTO saves (
     name,
     scenario_id,
     variant_id,
+    stage,
     current_location_id,
     turn_count,
     time_of_day,
     created_at,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetSave :one
 SELECT *
@@ -24,6 +25,11 @@ ORDER BY updated_at DESC;
 -- name: SetTimeOfDay :execrows
 UPDATE saves
 SET time_of_day = ?, updated_at = ?
+WHERE id = ?;
+
+-- name: SetStage :execrows
+UPDATE saves
+SET stage = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: DeleteSave :execrows

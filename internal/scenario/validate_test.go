@@ -133,6 +133,59 @@ triggers:
     when: {turn_ge: 1}
     then:
       - kill_npc: missing`,
+		"unknown stage in set_stage": `
+id: x
+title: t
+objectives:
+  - {stage: opening, title: open}
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs: []
+start: {location: a}
+key_clues: []
+triggers:
+  - id: t1
+    when: {turn_ge: 1}
+    then:
+      - set_stage: missing`,
+		"unknown clue in dialogue option": `
+id: x
+title: t
+objectives:
+  - {stage: opening, title: open}
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs:
+  - id: n1
+    name: N
+    personality: p
+    dialogue_options:
+      - id: ask
+        label: Ask
+        prompt: Ask something
+        requires_clues: [missing]
+start: {location: a}
+key_clues: []`,
+		"unknown location in item action": `
+id: x
+title: t
+objectives:
+  - {stage: opening, title: open}
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs: []
+items:
+  - id: i1
+    name: I
+    description: x
+    owner_type: investigator
+    actions:
+      - id: use
+        label: Use
+        prompt: Use it
+        locations: [missing]
+start: {location: a}
+key_clues: []`,
 		"add_event missing fields": `
 id: x
 title: t

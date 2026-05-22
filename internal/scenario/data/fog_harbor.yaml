@@ -9,6 +9,26 @@ intro: |
 
   你现在不需要输入命令。像跑团一样直接描述下一步行动即可：查看公告栏、去巡警所找海莲娜、到酒馆打听消息，或观察码头附近是否有异常。
 
+objectives:
+  - stage: opening
+    title: 弄清露西失踪前最后去了哪里，以及镇上为什么急着把这件事压下去。
+    steps:
+      - 查看码头公告栏和失踪启事，确认最早的异常线索。
+      - 去巡警所找海莲娜，听她讲露西失踪当晚的细节。
+      - 到钨灯酒馆打听镇上的传言，观察谁在回避这个话题。
+  - stage: investigation
+    title: 把潮汐异常、出诊记录、账册和历年失踪串成一条人类共谋链。
+    steps:
+      - 追问潮位、账册、出诊、教区登记这几个关键词。
+      - 争取玛丽莎、海莲娜、欧林或神父的信任。
+      - 留意安娜的身体状况；她可能不是旁观者。
+  - stage: confrontation
+    title: 在暴风低潮前确认当代执行者，并决定是否进入灯塔下方的礁洞。
+    steps:
+      - 准备油灯、证据和撤离路线。
+      - 找到足够证据后再对峙嫌疑人。
+      - 如果进入礁洞，优先寻找露西的实物证据和非人契约的源头。
+
 # 剧本背景真相（GM-only；variant 会覆盖此默认）。
 # 默认 truth 对应 vance_pact 这一最常见 variant；其他 variant 会在 SelectVariant 时 patch。
 truth: |
@@ -28,44 +48,89 @@ locations:
   - id: harbor
     name: 雾港码头
     description: 灰雾常年笼罩的木栈桥；潮水拍打着桩柱，气味混着海藻与机油。公告栏边角发黑、被钉满褪色海报。
+    leads:
+      - 查看公告栏上的失踪启事和被潮气泡皱的便条。
+      - 沿着木桩和退潮线寻找布料、血迹或被海水冲来的东西。
+      - 询问码头工人最近是否见过露西，或是否听到北岬方向的怪声。
     connections: [pub, lighthouse, station, church]
 
   - id: pub
     name: 钨灯酒馆
     description: 半地下的小酒馆，常客不多但总有人在角落低声交谈。柜台后挂着一本油迹斑斑的账册。
+    leads:
+      - 找玛丽莎点一杯酒，试探她是否知道露西和范斯医生的事。
+      - 观察柜台后的账册，特别是出诊、签名、赊账和药品代购记录。
+      - 与安娜闲聊，留意她的身体状况、梦境和范斯医生的"好心"。
     connections: [harbor, station, church]
 
   - id: lighthouse
     name: 北岬灯塔
     description: 海风将塔身刻出深沟。守塔人独住此处，少与外界往来。塔基朝海一面有铁梯，雾里可见礁石轮廓。
+    leads:
+      - 询问欧林失踪夜灯光是否转向，或是否有人给过他暗号。
+      - 检查塔基朝海一侧的铁梯、礁石和低潮痕迹。
+      - 夜里贴近塔基聆听风声之外是否还有低沉合鸣。
     connections: [harbor, reef_cave]
 
   - id: station
     name: 巡警所
     description: 仅有两名警员当值的小型驻地。墙上挂着褪色的失踪者画像。后院有一间小宿舍，海莲娜暂住于此。
+    leads:
+      - 找海莲娜谈露西失踪当晚、潮位和露西留下的东西。
+      - 观察罗克长官的态度，判断他是在办案还是在赶你离开。
+      - 留意抽屉、失踪者画像、旧案卷和可能被藏起来的财务凭证。
     connections: [harbor, pub, lucy_room]
 
   - id: church
     name: 圣安德鲁老教堂
     description: 镇上最古老的建筑之一。彩窗上画的不是常见圣徒，而是难辨的鳞甲生物。地下保管着教区登记簿。
+    leads:
+      - 与卡尔文神父谈历年失踪、教区登记和"古约"。
+      - 查看彩窗、登记簿和墓地北角的小石碑。
+      - 判断神父是在隐瞒罪行，还是在害怕更古老的东西。
     connections: [harbor, pub]
 
   - id: lucy_room
     parent: station
     name: 露西的房间
     description: 海莲娜女儿失踪前的住处；床头柜上有一本日记的残页与一只半开的贝壳盒。
+    leads:
+      - 翻看日记残页，确认露西最后相信了谁。
+      - 检查贝壳盒、衣物和窗边潮湿痕迹。
+      - 询问海莲娜哪些东西被动过，哪些东西保持原样。
     connections: [station]
 
   - id: reef_cave
     parent: lighthouse
     name: 灯塔下礁洞
     description: 仅在月圆暴风夜的低潮露出。岩壁刻满螺旋纹与不属于人类语系的符文；空气中有腥咸的低吼。
+    leads:
+      - 点亮油灯，检查入口是否安全，确认退路。
+      - 拓印或拍下岩壁螺旋纹，寻找和教区图样相同的符号。
+      - 深入圆坑前先观察骨骸、布料和低沉合鸣的来源。
     connections: [lighthouse]
 
 npcs:
   - id: vance
     name: 范斯医生
     personality: 严肃寡言，眼神回避；说话短促，常用专业词汇绕开问题。坐诊时态度温和，被追问时改口冷漠。
+    first_impression: 酒馆角落里坐着一名穿深色外套的医生，手指反复摩挲杯沿；有人提到露西时，他先看向门口，再低头整理袖口。
+    opening_line: "外地记者？雾港每年都有人离开，不是每个人都需要被写成悲剧。"
+    dialogue_options:
+      - id: ask_about_lucy
+        label: 问露西是否找过他
+        prompt: 询问范斯医生，露西失踪前是否来找过他，或是否接受过他的诊治。
+        stages: [opening, investigation]
+      - id: press_visit_log
+        label: 追问出诊记录
+        prompt: 拿出已知线索，追问范斯医生失踪夜的出诊记录、处方和钥匙去向。
+        stages: [investigation, confrontation]
+        requires_clues: [ledger]
+      - id: confront_carvings
+        label: 用礁洞拓片对质
+        prompt: 把礁洞拓片和药品单摆到范斯医生面前，要求他解释这些证据如何连在一起。
+        stages: [confrontation]
+        requires_clues: [reef_carvings]
     secret: 你是镇上献祭契约的人类一方主谋。每隔数年挑选"无人挂念"的边缘人，用出诊作为掩护"安排"他们消失。露西是最近一名。你不残忍，是冷静——你认为这是小镇的代价。
     knowledge:
       sacrifice_history:
@@ -81,6 +146,22 @@ npcs:
   - id: marisa
     name: 玛丽莎（酒馆老板娘）
     personality: 直率，不轻信外人，但在酒过三巡后会松口；记得每位常客。眼神时常瞟向门口。
+    first_impression: 玛丽莎擦着一只早已干净的杯子，听见露西的名字时动作停了一下，又很快把杯子放回架上。
+    opening_line: "喝点什么可以，问失踪案就小声点。这里墙薄，人也爱记账。"
+    dialogue_options:
+      - id: ask_rumors
+        label: 打听镇上传言
+        prompt: 找玛丽莎点一杯酒，小声询问露西失踪后镇上谁最急着让大家闭嘴。
+        stages: [opening]
+      - id: ask_ledger
+        label: 试探柜台账册
+        prompt: 试探玛丽莎柜台后的账册，询问出诊、签名、赊账和药品代购记录。
+        stages: [opening, investigation]
+      - id: protect_anna
+        label: 问安娜是否有危险
+        prompt: 告诉玛丽莎安娜可能是下一个目标，要求她说出范斯最近对安娜做了什么。
+        stages: [investigation, confrontation]
+        requires_clues: [anna_warning]
     secret: 你部分知情。账册不是简单的酒馆账——某几页对应"祭品当夜"范斯的出诊时间。你被范斯威胁——他知道你前夫的债。你想说，但每次开口都会先看向门外是否有人。
     knowledge:
       ledger_entries:
@@ -95,6 +176,22 @@ npcs:
   - id: helena
     name: 海莲娜（失踪者母亲）
     personality: 焦虑、声音颤抖；愿意把任何线索说给愿意听的人。手指总在揉一条手帕。
+    first_impression: 海莲娜坐在巡警所后屋的窄床边，手帕被她揉得发皱；她一见到你就站起来，像是怕你下一秒也会离开。
+    opening_line: "他们都说露西自己走了。可她不会不带那只贝壳盒，也不会在退潮那晚出门。请你听我说完。"
+    dialogue_options:
+      - id: ask_last_night
+        label: 听她讲失踪当晚
+        prompt: 安抚海莲娜，请她从露西失踪当晚的潮位、出门时间和最后一句话开始讲。
+        stages: [opening]
+      - id: ask_lucy_room
+        label: 请求查看露西房间
+        prompt: 请求海莲娜带你查看露西的房间，重点看日记、贝壳盒和窗边潮湿痕迹。
+        stages: [opening, investigation]
+      - id: show_cloth
+        label: 让她辨认布片
+        prompt: 把退潮线找到的布片给海莲娜看，请她辨认是不是露西衣裙上的花纹。
+        stages: [investigation]
+        requires_clues: [cloth_scrap]
     secret: 你不知情。你是真心相信"露西是离家出走"，但每次想到那晚的潮位都会发抖——你说不出为什么。
     knowledge:
       tide_that_night:
@@ -109,6 +206,22 @@ npcs:
   - id: orin
     name: 灯塔守欧林
     personality: 沉默寡言，说话直白；夜晚会留意每一艘进出港的船。手有老茧，说话时眼睛盯着海面。
+    first_impression: 欧林站在灯塔门口，烟斗没有点燃；他说话前先看海，像在确认潮声有没有把你的问题盖过去。
+    opening_line: "灯怎么转，不是外地人该问的事。可那晚的风向……确实不对。"
+    dialogue_options:
+      - id: ask_light
+        label: 问灯光是否转向
+        prompt: 询问欧林露西失踪夜灯塔灯光是否转向，是否有人给过他暗号。
+        stages: [opening, investigation]
+      - id: ask_chant
+        label: 问塔基下的声音
+        prompt: 追问欧林夜里贴近塔基时听到的低沉合鸣，以及那声音和礁石的关系。
+        stages: [investigation]
+        requires_clues: [tide_chart]
+      - id: ask_cave_route
+        label: 请他说出礁洞路线
+        prompt: 要求欧林说明暴风低潮时从灯塔下到礁洞入口的路线和危险。
+        stages: [confrontation]
     secret: 你是被范斯收买的眼线——那晚负责让灯塔灯光"恰好移开"那段海面。但你已经动摇。露西的母亲是你年轻时认识的人。
     knowledge:
       that_night_signal:
@@ -124,6 +237,22 @@ npcs:
   - id: anna
     name: 安娜·里弗斯（酒馆女招待）
     personality: 二十出头，瘦削，脸色不好。说话时眼神先飘向门口；笑容是练习出来的，不到眼里。
+    first_impression: 安娜端盘时手腕微微发抖，笑容来得很快，却像是练过很多次；她总会下意识望向门口。
+    opening_line: "医生这阵子对我特别好。你别告诉玛丽莎，我不想再给她添麻烦。"
+    dialogue_options:
+      - id: ask_vance_kindness
+        label: 问范斯为何帮她
+        prompt: 温和地询问安娜，范斯医生最近为什么频繁照顾她，是否给过药或安排过检查。
+        stages: [opening, investigation]
+      - id: ask_dreams
+        label: 问她的海中梦境
+        prompt: 询问安娜最近是否做过关于海、声音和有人呼唤她名字的梦。
+        stages: [investigation]
+      - id: warn_anna
+        label: 劝她今晚别独处
+        prompt: 告诉安娜她可能有危险，劝她今晚不要独处，并请她回忆范斯给过的每一样东西。
+        stages: [investigation, confrontation]
+        requires_clues: [clinic_supplies]
     secret: 你是下一个祭品。三周前你被前雇主驱逐，无家可归——范斯医生主动收留你免费义诊，你以为是好心。你身体最近一直无力，是范斯下的镇静剂；你不知道。你只觉得"医生真好"。
     knowledge:
       vance_kindness:
@@ -143,6 +272,18 @@ npcs:
   - id: rourke
     name: 巡警长官罗克
     personality: 表面合作，私下不耐烦；多次劝外来调查员"不要插手"。说话喜欢双手抱胸。
+    first_impression: 罗克长官把你的名片放在桌角，没有拿起来；他的笑容礼貌，却像一枚扣紧的警徽。
+    opening_line: "记者先生，雾港欢迎报道风景，不欢迎把私事写成丑闻。"
+    dialogue_options:
+      - id: ask_case_file
+        label: 要求查看案卷
+        prompt: 正式要求罗克长官出示露西失踪案卷、失踪者画像和旧案卷记录。
+        stages: [opening, investigation]
+      - id: press_bribe
+        label: 追问银行存单
+        prompt: 追问罗克长官抽屉里的银行存单和他与范斯医生之间的财务往来。
+        stages: [investigation, confrontation]
+        requires_clues: [rourke_bribe]
     secret: 你长期受贿默许献祭。证据是诊所外的一张银行存单——抽屉锁着。被外来调查员揭露的那一刻，你会准备签发驱逐令。
     knowledge:
       bribe_envelope:
@@ -154,6 +295,23 @@ npcs:
   - id: father_calvin
     name: 卡尔文神父
     personality: 老朽，背微驼；眼神锐利。说话喜欢以圣经隐喻包裹现实。
+    first_impression: 卡尔文神父在彩窗下整理烛台，光落在玻璃上的鳞甲图案里；他转身时，眼睛比声音年轻得多。
+    opening_line: "迷途的人总以为自己是在寻找别人。你来找露西，还是来找雾里藏着的答案？"
+    dialogue_options:
+      - id: ask_records
+        label: 问历年失踪记录
+        prompt: 询问卡尔文神父教区登记簿里是否记录过类似失踪，以及这些年份是否存在规律。
+        stages: [opening, investigation]
+      - id: ask_old_pact
+        label: 追问古约
+        prompt: 用教区登记和墓地石碑追问卡尔文神父所谓古约、无人挂念的人和海之间的关系。
+        stages: [investigation, confrontation]
+        requires_clues: [empty_graves]
+      - id: ask_seal
+        label: 询问如何终结仪式
+        prompt: 询问卡尔文神父，如果礁洞里的契约真实存在，是否还有封印或终结仪式的方法。
+        stages: [confrontation]
+        requires_clues: [parish_record]
     secret: 你知情但守密——你一生研究教区登记簿，发现历年失踪记录里有规律。你没站到任何一边——你认为这是镇与海的"古约"，凡人不应妄动。但你私下保留了一份手抄复本。
     knowledge:
       parish_pattern:
@@ -284,17 +442,52 @@ items:
     description: 油壳磨损但灯芯完好；适合夜路。礁洞下行时不可或缺。
     owner_type: location
     owner_id: harbor
+    actions:
+      - id: take_lantern
+        label: 拿起黄铜油灯
+        prompt: 从码头取走黄铜油灯，检查灯芯和油量，把它带在身边以备夜路或礁洞使用。
+        stages: [opening, investigation]
+        locations: [harbor]
+        owner_types: [location]
+      - id: light_for_cave
+        label: 点亮油灯检查礁洞入口
+        prompt: 点亮黄铜油灯，先照亮礁洞入口、退路和脚下潮湿岩面，再决定是否深入。
+        stages: [confrontation]
+        locations: [reef_cave]
+        owner_types: [investigator]
 
   - id: notebook
     name: 记者笔记本
     description: 你随身的笔记本。写下的内容会成为撤离时的"证据"——如果你能离开。
     owner_type: investigator
+    actions:
+      - id: organize_evidence
+        label: 整理证据链
+        prompt: 翻开记者笔记本，把当前线索按时间线整理：露西失踪、潮汐异常、账册记录、教区登记和可能的当代执行者。
+        stages: [investigation, confrontation]
+      - id: prepare_report
+        label: 准备可带走的报道证据
+        prompt: 用记者笔记本整理一份可以带出雾港的报道提纲，列出仍缺少的关键证据。
+        stages: [confrontation]
 
   - id: parish_copy
     name: 教区登记簿手抄本
     description: 卡尔文神父私下保留的副本。一旦带出教堂，神父对你的关系会发生显著变化。
     owner_type: npc
     owner_id: father_calvin
+    actions:
+      - id: request_parish_copy
+        label: 请求借走教区手抄本
+        prompt: 向卡尔文神父请求借走教区登记簿手抄本，承诺只用它核对历年失踪记录。
+        stages: [investigation]
+        locations: [church]
+        owner_types: [npc]
+        requires_clues: [empty_graves]
+      - id: compare_parish_copy
+        label: 核对历年失踪规律
+        prompt: 翻阅教区登记簿手抄本，核对三十年间失踪年份、身份和月相潮汐之间的规律。
+        stages: [investigation, confrontation]
+        owner_types: [investigator]
 
 start:
   location: harbor
@@ -325,6 +518,7 @@ triggers:
       - add_event:
           type: scenario
           description: 玛丽莎在打烊后留你坐下；她从柜台底层取出账册的复印页，又在你耳边压低声音说了几个出诊的名字与药品订单。
+      - set_stage: investigation
       - mark_clue_found:
           clue_id: ledger
       - mark_clue_found:
@@ -343,6 +537,7 @@ triggers:
       - add_event:
           type: scenario
           description: 神父长久注视你，沉默良久后从祭坛后取出一本手抄本——三十年间七例失踪的对照表。
+      - set_stage: investigation
       - mark_clue_found:
           clue_id: parish_record
           location_id: church
@@ -375,6 +570,7 @@ triggers:
       - add_event:
           type: scenario
           description: 欧林点上烟斗，看着海面良久。"那晚灯转了。我没解释，但我记得。"——他第一次正眼看你。
+      - set_stage: investigation
       - mark_clue_found:
           clue_id: strange_chant
           location_id: lighthouse
@@ -388,6 +584,7 @@ triggers:
       - add_event:
           type: scenario
           description: 暴风夜的低潮远低于表上记录——铁梯下方礁洞露出完整入口，咸腥的低鸣自洞内传来。
+      - set_stage: confrontation
 
   - id: culprit_confronted
     when:
@@ -401,6 +598,7 @@ triggers:
       - add_event:
           type: scenario
           description: '你把礁洞的拓片与诊所药品单摊在面前。当代执行者第一次没立刻回避你的视线——「这是这个镇的代价。你不该来。」'
+      - set_stage: confrontation
 
   - id: anna_warns
     when:

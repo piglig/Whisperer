@@ -249,7 +249,7 @@ func main() {
 		fail("build orchestrator", err)
 	}
 
-	model := tui.New(ctx, orch, st, opening)
+	model := tui.New(ctx, orch, st, opening, scn)
 	prog := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := prog.Run(); err != nil {
 		fail("tui", err)

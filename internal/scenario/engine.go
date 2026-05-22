@@ -43,6 +43,9 @@ func (e *Engine) Apply(ctx context.Context, saveID string) error {
 	if err := e.repo.SetTimeOfDay(ctx, saveID, tod); err != nil {
 		return fmt.Errorf("apply: set time: %w", err)
 	}
+	if err := e.repo.SetStage(ctx, saveID, DefaultStage); err != nil {
+		return fmt.Errorf("apply: set stage: %w", err)
+	}
 	if err := e.repo.UpdateSaveProgress(ctx, saveID, s.Start.Location, 0); err != nil {
 		return fmt.Errorf("apply: set start location: %w", err)
 	}
@@ -343,6 +346,8 @@ func (e *Engine) executeAction(ctx context.Context, saveID string, turn int, a A
 		return e.repo.KillNPC(ctx, a.KillNPC)
 	case a.AdvanceTime > 0:
 		return e.advanceTime(ctx, saveID, a.AdvanceTime)
+	case a.SetStage != "":
+		return e.repo.SetStage(ctx, saveID, a.SetStage)
 	}
 	return fmt.Errorf("unrecognized action")
 }

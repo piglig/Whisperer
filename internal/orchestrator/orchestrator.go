@@ -197,13 +197,26 @@ func (o *Orchestrator) renderSystemPrompt(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("get save: %w", err)
 	}
 
+	events, eventsErr := repo.ListEvents(ctx, o.cfg.SaveID, 0, 0)
+	stage := scenario.NormalizeStage(o.cfg.Scenario, sv.Stage)
+	if stage == "" {
+		stage = scenario.DefaultStage
+	}
+	objective := scenario.ObjectiveForStage(o.cfg.Scenario, stage)
+
+	scenarioContext := fmt.Sprintf("剧本: %s（%s, v%s）；当前回合 %d；时段 %s；当前阶段 %s",
+		o.cfg.Scenario.Title, o.cfg.Scenario.ID, o.cfg.Scenario.Version, sv.TurnCount, sv.TimeOfDay, stage)
+	if objective.Title != "" {
+		scenarioContext += "；当前目标 " + objective.Title
+	}
+
 	pc := agent.PromptContext{
-		ScenarioContext: fmt.Sprintf("剧本: %s（%s, v%s）；当前回合 %d；时段 %s",
-			o.cfg.Scenario.Title, o.cfg.Scenario.ID, o.cfg.Scenario.Version, sv.TurnCount, sv.TimeOfDay),
-		Truth:        scenario.RenderTruth(o.cfg.Scenario),
-		NPCSecrets:   scenario.RenderNPCSecrets(o.cfg.Scenario),
-		NPCKnowledge: scenario.RenderNPCKnowledge(o.cfg.Scenario),
-		ClueAtlas:    scenario.RenderClueAtlas(o.cfg.Scenario),
+		ScenarioContext: scenarioContext,
+		Truth:           scenario.RenderTruth(o.cfg.Scenario),
+		NPCSecrets:      scenario.RenderNPCSecrets(o.cfg.Scenario),
+		NPCKnowledge:    scenario.RenderNPCKnowledge(o.cfg.Scenario),
+		ClueAtlas:       scenario.RenderClueAtlas(o.cfg.Scenario),
+		PlayerGuidance:  scenario.RenderPlayerGuidance(o.cfg.Scenario),
 	}
 	if o.cfg.Meta != nil {
 		pc.PlayerPrior = o.cfg.Meta.RenderForGM()
@@ -220,7 +233,7 @@ func (o *Orchestrator) renderSystemPrompt(ctx context.Context) (string, error) {
 	}
 
 	// 近期事件（最多 5 条）作为 RAG 的廉价替代；正式 RAG 走 memory.QueryEvents。
-	if events, err := repo.ListEvents(ctx, o.cfg.SaveID, 0, 0); err == nil && len(events) > 0 {
+	if eventsErr == nil && len(events) > 0 {
 		start := 0
 		if len(events) > 5 {
 			start = len(events) - 5

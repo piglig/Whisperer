@@ -60,20 +60,91 @@ func newTestStore(t *testing.T) (*store.Store, string) {
 		ID: "cloth", SaveID: id, ScenarioID: "fh", Description: "湿布片",
 		Found: true, FoundInLocationID: "harbor", FoundAtTurn: 1,
 	}))
+	require.NoError(t, s.Repo().UpsertItem(ctx, store.Item{
+		ID: "lantern", SaveID: id, Name: "黄铜油灯", Description: "x",
+		OwnerType: store.OwnerLocation, OwnerID: "harbor",
+		PropertiesJSON: "{}",
+	}))
 	require.NoError(t, s.Repo().UpdateSaveProgress(ctx, id, "harbor", 0))
 	return s, id
+}
+
+func testScenario() *scenario.Scenario {
+	return &scenario.Scenario{
+		Objectives: []scenario.Objective{
+			{
+				Stage: "opening",
+				Title: "确认露西失踪前最后去了哪里",
+				Steps: []string{"查看码头公告栏", "找海莲娜问话"},
+			},
+			{
+				Stage: "investigation",
+				Title: "把潮汐、账册和出诊记录串起来",
+				Steps: []string{"追问账册", "争取玛丽莎信任"},
+			},
+		},
+		Locations: []scenario.SLocation{
+			{
+				ID:          "harbor",
+				Name:        "雾港",
+				Description: "x",
+				Leads: []string{
+					"查看公告栏上的失踪启事",
+					"沿着退潮线寻找布料",
+					"询问码头工人最近是否见过露西",
+				},
+			},
+		},
+		NPCs: []scenario.SNPC{
+			{
+				ID:       "vance",
+				Name:     "范斯",
+				Location: "harbor",
+				DialogueOptions: []scenario.DialogueOption{
+					{
+						ID:     "ask_lucy",
+						Label:  "问露西是否找过他",
+						Prompt: "询问范斯，露西失踪前是否来找过他。",
+						Stages: []string{"opening"},
+					},
+				},
+			},
+		},
+		Items: []scenario.SItem{
+			{
+				ID:          "lantern",
+				Name:        "黄铜油灯",
+				Description: "x",
+				OwnerType:   "location",
+				OwnerID:     "harbor",
+				Actions: []scenario.ItemAction{
+					{
+						ID:         "take",
+						Label:      "拿起黄铜油灯",
+						Prompt:     "拿起黄铜油灯并检查灯芯。",
+						Stages:     []string{"opening"},
+						Locations:  []string{"harbor"},
+						OwnerTypes: []string{"location"},
+					},
+				},
+			},
+		},
+	}
 }
 
 func TestModel_OpeningRendered(t *testing.T) {
 	st, id := newTestStore(t)
 	r := &fakeRunner{saveID: id}
-	m := New(context.Background(), r, st, "开场白")
+	m := New(context.Background(), r, st, "开场白", testScenario())
 	v := m.View()
 	assert.Contains(t, v, "开场白")
 	assert.Contains(t, v, "Whisperer")
 	assert.Contains(t, v, "任务简报")
 	assert.Contains(t, v, "行动流")
 	assert.Contains(t, v, "案件卡")
+	assert.Contains(t, v, "阶段 开局")
+	assert.Contains(t, v, "当前目标")
+	assert.Contains(t, v, "查看码头公告栏")
 }
 
 func TestModel_SnapshotMsgPopulatesState(t *testing.T) {
@@ -194,6 +265,28 @@ func TestModel_TurnResultEnding(t *testing.T) {
 		}
 	}
 	assert.True(t, hasEnd)
+}
+
+func TestFormatCaseReport(t *testing.T) {
+	report := &scenario.CaseReport{
+		Ending:         scenario.Ending{ID: "solved", Kind: "success", Description: "结案"},
+		EvidenceStatus: "关键证据完整",
+		CulpritName:    "范斯医生",
+		FoundKeyClues:  []scenario.ReportClue{{ID: "ledger", Description: "账册"}},
+		MissingKeyClues: []scenario.ReportClue{
+			{ID: "reef_carvings", Description: "礁洞拓片"},
+		},
+		NPCOutcomes:  []scenario.NPCOutcome{{ID: "anna", Name: "安娜", Alive: false}},
+		TruthSummary: "本局真相摘要",
+	}
+
+	out := formatCaseReport(report)
+	assert.Contains(t, out, "结案评估")
+	assert.Contains(t, out, "本局真凶")
+	assert.Contains(t, out, "账册")
+	assert.Contains(t, out, "礁洞拓片")
+	assert.Contains(t, out, "安娜")
+	assert.Contains(t, out, "本局真相摘要")
 }
 
 func TestModel_QuitOnCtrlC(t *testing.T) {
@@ -327,7 +420,7 @@ func TestModel_CommandAndHelpOverlays(t *testing.T) {
 
 func TestModel_CaseRailTabsCycle(t *testing.T) {
 	st, id := newTestStore(t)
-	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白")
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白", testScenario())
 	updated, _ := m.Update(m.loadSnapshotCmd()())
 	m = updated.(Model)
 	m.width = 120
@@ -346,6 +439,48 @@ func TestModel_CaseRailTabsCycle(t *testing.T) {
 	assert.Equal(t, panelClues, m.activePanel)
 	assert.Contains(t, m.View(), "线索")
 	assert.Contains(t, m.View(), "湿布片")
+}
+
+func TestModel_SuggestedActionsFillAndSubmit(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "", testScenario())
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	mm := updated.(Model)
+	mm.width = 120
+	mm.height = 30
+
+	view := mm.View()
+	assert.Contains(t, view, "可选行动")
+	assert.Contains(t, view, "1. 查看公告栏上的失踪启事")
+	assert.Contains(t, view, "4. 使用黄铜油灯")
+	assert.Contains(t, view, "↑/↓ 选择行动")
+	assert.Contains(t, strings.Join(mm.actionOptions(), "\n"), "询问范斯：问露西是否找过他")
+
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	mm = updated.(Model)
+	assert.Equal(t, "沿着退潮线寻找布料", mm.input.Value())
+
+	mm.input.SetValue("")
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	mm = updated.(Model)
+	assert.Equal(t, "拿起黄铜油灯并检查灯芯。", mm.input.Value())
+
+	mm.input.SetValue("")
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
+	mm = updated.(Model)
+	assert.Equal(t, "询问范斯，露西失踪前是否来找过他。", mm.input.Value())
+
+	mm.input.SetValue("")
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyUp})
+	mm = updated.(Model)
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyUp})
+	mm = updated.(Model)
+	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm = updated.(Model)
+	assert.True(t, mm.busy)
+	require.NotEmpty(t, mm.log)
+	assert.Equal(t, EntryPlayer, mm.log[len(mm.log)-1].kind)
+	assert.Equal(t, "询问码头工人最近是否见过露西", mm.log[len(mm.log)-1].text)
 }
 
 func TestModel_StoryScrollsWithPageKeys(t *testing.T) {

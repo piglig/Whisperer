@@ -76,6 +76,7 @@ func TestSave_CRUD(t *testing.T) {
 	got, err := r.GetSave(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, "alpha", got.Name)
+	assert.Equal(t, "opening", got.Stage)
 	assert.Equal(t, 0, got.TurnCount)
 	assert.NotZero(t, got.CreatedAt)
 	assert.NotZero(t, got.UpdatedAt)
@@ -86,6 +87,11 @@ func TestSave_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "loc-1", got.CurrentLocationID)
 	assert.Equal(t, 5, got.TurnCount)
+
+	require.NoError(t, r.SetStage(ctx, id, "investigation"))
+	got, err = r.GetSave(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "investigation", got.Stage)
 
 	// list
 	require.NoError(t, r.CreateSave(ctx, Save{ID: uuid.NewString(), Name: "beta", ScenarioID: "fog_harbor"}))
@@ -112,6 +118,12 @@ func TestSave_NotFound(t *testing.T) {
 
 	err = r.UpdateSaveProgress(ctx, "missing", "l", 1)
 	assert.ErrorIs(t, err, ErrNotFound)
+
+	err = r.SetStage(ctx, "missing", "opening")
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	err = r.SetStage(ctx, "missing", "")
+	assert.ErrorContains(t, err, "invalid stage")
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +279,11 @@ func TestItem_LifecycleAndDestroy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, OwnerLocation, got.OwnerType)
 	assert.Equal(t, "harbor", got.OwnerID)
+
+	items, err := r.ListItems(ctx, saveID)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "lantern", items[0].ID)
 
 	// move to investigator
 	require.NoError(t, r.MoveItem(ctx, "lantern", OwnerInvestigator, "inv-1"))

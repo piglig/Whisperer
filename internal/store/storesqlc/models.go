@@ -84,4 +84,5 @@ type Save struct {
 	CreatedAt         int64          `json:"created_at"`
 	UpdatedAt         int64          `json:"updated_at"`
 	VariantID         string         `json:"variant_id"`
+	Stage             string         `json:"stage"`
 }

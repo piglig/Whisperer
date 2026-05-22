@@ -82,11 +82,15 @@ func (r *Repository) CreateSave(ctx context.Context, s Save) error {
 	if s.TimeOfDay == "" {
 		s.TimeOfDay = TimeMorning
 	}
+	if s.Stage == "" {
+		s.Stage = "opening"
+	}
 	return storesqlc.New(r.q).CreateSave(ctx, storesqlc.CreateSaveParams{
 		ID:                s.ID,
 		Name:              s.Name,
 		ScenarioID:        s.ScenarioID,
 		VariantID:         s.VariantID,
+		Stage:             s.Stage,
 		CurrentLocationID: sqlNullString(s.CurrentLocationID),
 		TurnCount:         int64(s.TurnCount),
 		TimeOfDay:         string(s.TimeOfDay),
@@ -123,6 +127,17 @@ func (r *Repository) SetTimeOfDay(ctx context.Context, id string, t TimeOfDay) e
 	}))
 }
 
+func (r *Repository) SetStage(ctx context.Context, id, stage string) error {
+	if stage == "" {
+		return fmt.Errorf("invalid stage: empty")
+	}
+	return checkRowsAffected(storesqlc.New(r.q).SetStage(ctx, storesqlc.SetStageParams{
+		Stage:     stage,
+		UpdatedAt: nowMS(),
+		ID:        id,
+	}))
+}
+
 func (r *Repository) DeleteSave(ctx context.Context, id string) error {
 	return checkRowsAffected(storesqlc.New(r.q).DeleteSave(ctx, id))
 }
@@ -142,6 +157,7 @@ func saveFromSQLC(s storesqlc.Save) Save {
 		Name:              s.Name,
 		ScenarioID:        s.ScenarioID,
 		VariantID:         s.VariantID,
+		Stage:             s.Stage,
 		CurrentLocationID: s.CurrentLocationID.String,
 		TurnCount:         int(s.TurnCount),
 		TimeOfDay:         TimeOfDay(s.TimeOfDay),
@@ -341,6 +357,14 @@ func (r *Repository) GetItem(ctx context.Context, id string) (Item, error) {
 		return Item{}, mapErr(err)
 	}
 	return itemFromSQLC(row), nil
+}
+
+func (r *Repository) ListItems(ctx context.Context, saveID string) ([]Item, error) {
+	rows, err := storesqlc.New(r.q).ListItems(ctx, saveID)
+	if err != nil {
+		return nil, err
+	}
+	return mapRows(rows, itemFromSQLC), nil
 }
 
 func (r *Repository) MoveItem(ctx context.Context, id string, ownerType OwnerType, ownerID string) error {

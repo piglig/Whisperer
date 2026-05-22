@@ -31,6 +31,20 @@ SELECT
 FROM items
 WHERE id = ?;
 
+-- name: ListItems :many
+SELECT
+    id,
+    save_id,
+    name,
+    description,
+    owner_type,
+    owner_id,
+    properties_json,
+    destroyed
+FROM items
+WHERE save_id = ?
+ORDER BY name;
+
 -- name: MoveItem :execrows
 UPDATE items
 SET owner_type = ?, owner_id = ?

@@ -37,6 +37,7 @@ func TestEngine_Apply_PopulatesStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "harbor", sv.CurrentLocationID)
 	assert.Equal(t, store.TimeMorning, sv.TimeOfDay)
+	assert.Equal(t, DefaultStage, sv.Stage)
 
 	loc, err := r.GetLocation(ctx, "harbor")
 	require.NoError(t, err)
@@ -116,6 +117,52 @@ func TestEngine_Evaluate_TimeAndRelationActions(t *testing.T) {
 		}
 	}
 	assert.True(t, foundLedger)
+
+	sv, _ := r.GetSave(ctx, saveID)
+	assert.Equal(t, "investigation", sv.Stage)
+}
+
+func TestEngine_SetStageAction(t *testing.T) {
+	yamlStr := `
+id: tiny
+title: t
+objectives:
+  - stage: opening
+    title: 开局
+  - stage: confrontation
+    title: 对峙
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs: []
+start: {location: a}
+key_clues: []
+triggers:
+  - id: stage
+    when: {turn_ge: 1}
+    then:
+      - set_stage: confrontation
+`
+	scn, err := Parse([]byte(yamlStr))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, ":memory:")
+	require.NoError(t, err)
+	defer s.Close()
+	r := s.Repo()
+	saveID := uuid.NewString()
+	require.NoError(t, r.CreateSave(ctx, store.Save{ID: saveID, Name: "x", ScenarioID: "tiny"}))
+
+	e := New(scn, r, nil)
+	require.NoError(t, e.Apply(ctx, saveID))
+	require.NoError(t, r.UpdateSaveProgress(ctx, saveID, "a", 1))
+
+	fired, err := e.Evaluate(ctx, saveID)
+	require.NoError(t, err)
+	require.Len(t, fired, 1)
+
+	sv, _ := r.GetSave(ctx, saveID)
+	assert.Equal(t, "confrontation", sv.Stage)
 }
 
 func TestEngine_CheckEndings(t *testing.T) {

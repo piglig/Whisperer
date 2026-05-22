@@ -192,10 +192,13 @@ func TestRenderGMSystem(t *testing.T) {
 	s, err := RenderGMSystem(PromptContext{
 		ScenarioContext:   "Fog Harbor",
 		InvestigatorBrief: "Lyra, journalist",
+		PlayerGuidance:    "查看公告栏",
 	})
 	require.NoError(t, err)
 	assert.Contains(t, s, "Fog Harbor")
 	assert.Contains(t, s, "Lyra, journalist")
+	assert.Contains(t, s, "玩家引导素材")
+	assert.Contains(t, s, "查看公告栏")
 	assert.NotContains(t, s, "Recent events", "empty section should be skipped")
 }
 

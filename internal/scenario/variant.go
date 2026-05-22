@@ -84,6 +84,9 @@ func MergeVariant(base *Scenario, v *Variant) *Scenario {
 	if v.Truth != "" {
 		out.Truth = v.Truth
 	}
+	if v.Culprit != "" {
+		out.Culprit = v.Culprit
+	}
 	for i := range out.NPCs {
 		n := &out.NPCs[i]
 		if sec, ok := v.NPCSecrets[n.ID]; ok {
@@ -141,11 +144,19 @@ func cloneScenario(s *Scenario) *Scenario {
 	out := *s
 	out.Locations = append([]SLocation(nil), s.Locations...)
 	for i, l := range s.Locations {
+		out.Locations[i].Leads = append([]string(nil), l.Leads...)
 		out.Locations[i].Connections = append([]string(nil), l.Connections...)
 	}
 	out.NPCs = make([]SNPC, len(s.NPCs))
 	for i, n := range s.NPCs {
 		out.NPCs[i] = n
+		out.NPCs[i].DialogueOptions = make([]DialogueOption, len(n.DialogueOptions))
+		for j, opt := range n.DialogueOptions {
+			out.NPCs[i].DialogueOptions[j] = opt
+			out.NPCs[i].DialogueOptions[j].Stages = append([]string(nil), opt.Stages...)
+			out.NPCs[i].DialogueOptions[j].RequiresClues = append([]string(nil), opt.RequiresClues...)
+			out.NPCs[i].DialogueOptions[j].SuppressIfClues = append([]string(nil), opt.SuppressIfClues...)
+		}
 		if n.Knowledge != nil {
 			km := make(map[string]NPCKnowledge, len(n.Knowledge))
 			for k, kn := range n.Knowledge {
@@ -157,7 +168,19 @@ func cloneScenario(s *Scenario) *Scenario {
 		}
 	}
 	out.Clues = append([]SClue(nil), s.Clues...)
-	out.Items = append([]SItem(nil), s.Items...)
+	out.Items = make([]SItem, len(s.Items))
+	for i, item := range s.Items {
+		out.Items[i] = item
+		out.Items[i].Actions = make([]ItemAction, len(item.Actions))
+		for j, action := range item.Actions {
+			out.Items[i].Actions[j] = action
+			out.Items[i].Actions[j].Stages = append([]string(nil), action.Stages...)
+			out.Items[i].Actions[j].Locations = append([]string(nil), action.Locations...)
+			out.Items[i].Actions[j].OwnerTypes = append([]string(nil), action.OwnerTypes...)
+			out.Items[i].Actions[j].RequiresClues = append([]string(nil), action.RequiresClues...)
+			out.Items[i].Actions[j].SuppressIfClues = append([]string(nil), action.SuppressIfClues...)
+		}
+	}
 	out.KeyClues = append([]string(nil), s.KeyClues...)
 	out.Triggers = make([]Trigger, len(s.Triggers))
 	for i, t := range s.Triggers {

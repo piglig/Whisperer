@@ -101,6 +101,53 @@ func (q *Queries) ListDestroyedItems(ctx context.Context, saveID string) ([]Item
 	return items, nil
 }
 
+const listItems = `-- name: ListItems :many
+SELECT
+    id,
+    save_id,
+    name,
+    description,
+    owner_type,
+    owner_id,
+    properties_json,
+    destroyed
+FROM items
+WHERE save_id = ?
+ORDER BY name
+`
+
+func (q *Queries) ListItems(ctx context.Context, saveID string) ([]Item, error) {
+	rows, err := q.db.QueryContext(ctx, listItems, saveID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Item{}
+	for rows.Next() {
+		var i Item
+		if err := rows.Scan(
+			&i.ID,
+			&i.SaveID,
+			&i.Name,
+			&i.Description,
+			&i.OwnerType,
+			&i.OwnerID,
+			&i.PropertiesJson,
+			&i.Destroyed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const moveItem = `-- name: MoveItem :execrows
 UPDATE items
 SET owner_type = ?, owner_id = ?

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
+	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
@@ -42,6 +43,11 @@ type logEntry struct {
 	text string
 }
 
+type suggestedAction struct {
+	label string
+	input string
+}
+
 // turnDoneMsg 是 RunTurn 完成后的异步消息。
 type turnDoneMsg struct {
 	res orchestrator.TurnResult
@@ -55,7 +61,9 @@ type snapshotMsg struct {
 	location  store.Location
 	npcs      []store.NPC
 	clues     []store.Clue
+	items     []store.Item
 	eventTail []store.Event
+	stage     string
 	err       error
 }
 
@@ -94,13 +102,16 @@ const (
 type Model struct {
 	runner Runner
 	store  *store.Store
+	scn    *scenario.Scenario
 
 	save     store.Save
 	inv      store.Investigator
 	location store.Location
 	npcs     []store.NPC
 	clues    []store.Clue
+	items    []store.Item
 	events   []store.Event
+	stage    string
 
 	log         []logEntry
 	input       textinput.Model
@@ -115,6 +126,7 @@ type Model struct {
 	activePanel sidePanel
 	overlay     overlayMode
 	storyOffset int
+	actionIndex int
 
 	completionBase  string
 	completionIndex int
@@ -124,7 +136,7 @@ type Model struct {
 }
 
 // New 构造一个 Model。
-func New(ctx context.Context, runner Runner, st *store.Store, openingNarrative string) Model {
+func New(ctx context.Context, runner Runner, st *store.Store, openingNarrative string, scn ...*scenario.Scenario) Model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.Placeholder = "描述行动，或 Ctrl+P 打开命令"
@@ -140,6 +152,9 @@ func New(ctx context.Context, runner Runner, st *store.Store, openingNarrative s
 		input:   in,
 		spinner: sp,
 		ctx:     ctx,
+	}
+	if len(scn) > 0 {
+		m.scn = scn[0]
 	}
 	if openingNarrative != "" {
 		m.log = append(m.log, logEntry{kind: EntryGM, text: openingNarrative})
@@ -178,11 +193,16 @@ func (m Model) loadSnapshotCmd() tea.Cmd {
 		if clues, err := repo.ListFoundClues(ctx, sv.ID); err == nil {
 			msg.clues = clues
 		}
+		if items, err := repo.ListItems(ctx, sv.ID); err == nil {
+			msg.items = items
+		}
+		msg.stage = sv.Stage
 		if events, err := repo.ListEvents(ctx, sv.ID, 0, 0); err == nil {
-			if len(events) > 8 {
-				events = events[len(events)-8:]
+			tail := events
+			if len(tail) > 8 {
+				tail = tail[len(tail)-8:]
 			}
-			msg.eventTail = events
+			msg.eventTail = tail
 		}
 		return msg
 	}
@@ -248,6 +268,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.busy {
 			return m, nil
 		}
+		if strings.TrimSpace(m.input.Value()) == "" {
+			if idx, ok := actionDigit(msg); ok {
+				return m.fillAction(idx), nil
+			}
+			switch msg.Type {
+			case tea.KeyUp:
+				return m.moveAction(-1), nil
+			case tea.KeyDown:
+				return m.moveAction(1), nil
+			}
+		}
 		switch msg.Type {
 		case tea.KeyEsc:
 			m.quitting = true
@@ -256,6 +287,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.completeInput(), nil
 		case tea.KeyEnter:
 			text := strings.TrimSpace(m.input.Value())
+			if text == "" {
+				text = m.selectedAction()
+			}
 			m.input.SetValue("")
 			m.resetCompletion()
 			if text == "" {
@@ -283,7 +317,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.location = msg.location
 		m.npcs = msg.npcs
 		m.clues = msg.clues
+		m.items = msg.items
 		m.events = msg.eventTail
+		m.stage = msg.stage
+		if actions := m.actionOptions(); len(actions) == 0 || m.actionIndex >= len(actions) {
+			m.actionIndex = 0
+		}
 		return m, nil
 
 	case turnDoneMsg:
@@ -308,6 +347,63 @@ func (m Model) handleSubmit(text string) (Model, tea.Cmd) {
 	m.busy = true
 	m.storyOffset = 0
 	return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
+}
+
+func actionDigit(msg tea.KeyMsg) (int, bool) {
+	if len(msg.Runes) != 1 {
+		return 0, false
+	}
+	r := msg.Runes[0]
+	if r < '1' || r > '9' {
+		return 0, false
+	}
+	return int(r - '1'), true
+}
+
+func (m Model) fillAction(idx int) Model {
+	actions := m.actionChoices()
+	if idx < 0 || idx >= len(actions) {
+		return m
+	}
+	m.actionIndex = idx
+	m.input.SetValue(actions[idx].input)
+	m.input.CursorEnd()
+	m.resetCompletion()
+	return m
+}
+
+func (m Model) moveAction(delta int) Model {
+	actions := m.actionChoices()
+	if len(actions) == 0 {
+		m.actionIndex = 0
+		return m
+	}
+	m.actionIndex = (m.actionIndex + delta + len(actions)) % len(actions)
+	return m
+}
+
+func (m Model) selectedAction() string {
+	actions := m.actionChoices()
+	if len(actions) == 0 {
+		return ""
+	}
+	idx := m.actionIndex
+	if idx < 0 || idx >= len(actions) {
+		idx = 0
+	}
+	return actions[idx].input
+}
+
+func (m Model) selectedActionLabel() string {
+	actions := m.actionChoices()
+	if len(actions) == 0 {
+		return ""
+	}
+	idx := m.actionIndex
+	if idx < 0 || idx >= len(actions) {
+		idx = 0
+	}
+	return actions[idx].label
 }
 
 func (m Model) completeInput() Model {
@@ -472,12 +568,66 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	}
 	if res.Ending != nil && !m.endingShown {
 		m.endingShown = true
+		text := fmt.Sprintf("[%s] %s", strings.ToUpper(res.Ending.Kind), res.Ending.Description)
+		if res.Report != nil {
+			text = formatCaseReport(res.Report)
+		}
 		m.log = append(m.log, logEntry{
 			kind: EntryEnding,
-			text: fmt.Sprintf("[%s] %s", strings.ToUpper(res.Ending.Kind), res.Ending.Description),
+			text: text,
 		})
 	}
 	m.storyOffset = 0
+}
+
+func formatCaseReport(report *scenario.CaseReport) string {
+	if report == nil {
+		return ""
+	}
+	lines := []string{
+		fmt.Sprintf("[%s] %s", strings.ToUpper(report.Ending.Kind), report.Ending.Description),
+	}
+	if report.EvidenceStatus != "" {
+		lines = append(lines, "", "结案评估", "  "+report.EvidenceStatus)
+	}
+	if report.CulpritName != "" {
+		lines = append(lines, "", "本局真凶", "  "+report.CulpritName)
+	}
+	if len(report.FoundKeyClues) > 0 {
+		lines = append(lines, "", "已掌握关键证据")
+		for _, clue := range report.FoundKeyClues {
+			lines = append(lines, "  - "+clue.Description)
+		}
+	}
+	if len(report.MissingKeyClues) > 0 {
+		lines = append(lines, "", "遗漏关键证据")
+		for _, clue := range report.MissingKeyClues {
+			lines = append(lines, "  - "+nonEmpty(clue.Description, clue.ID))
+		}
+	}
+	if npcLines := reportNPCOutcomeLines(report.NPCOutcomes); len(npcLines) > 0 {
+		lines = append(lines, "", "人物后果")
+		lines = append(lines, npcLines...)
+	}
+	if report.TruthSummary != "" {
+		lines = append(lines, "", "本局真相", "  "+report.TruthSummary)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func reportNPCOutcomeLines(outcomes []scenario.NPCOutcome) []string {
+	lines := []string{}
+	for _, outcome := range outcomes {
+		if outcome.Alive && outcome.Relation > -15 {
+			continue
+		}
+		state := "存活"
+		if !outcome.Alive {
+			state = "死亡"
+		}
+		lines = append(lines, fmt.Sprintf("  - %s：%s，关系 %+d", nonEmpty(outcome.Name, outcome.ID), state, outcome.Relation))
+	}
+	return lines
 }
 
 // View 渲染整个界面。
@@ -573,6 +723,7 @@ func (m Model) renderCommandDeck(width, height int) string {
 func (m Model) briefLine() string {
 	parts := []string{
 		"地点 " + nonEmpty(m.location.Name, "?"),
+		"阶段 " + displayStage(m.currentStage()),
 		fmt.Sprintf("HP %d MP %d SAN %d", m.inv.HP, m.inv.MP, m.inv.SAN),
 	}
 	if alert := m.latestErrorSummary(); alert != "" {
@@ -589,6 +740,9 @@ func (m Model) primarySuggestion() string {
 	if m.busy {
 		return "等待 GM 回应；可用 Ctrl+C 中断程序"
 	}
+	if action := m.selectedActionLabel(); action != "" {
+		return action
+	}
 	for _, npc := range m.npcs {
 		if npc.ID != "" {
 			return fmt.Sprintf("与 %s 交谈：/talk %s <内容>", nonEmpty(npc.Name, npc.ID), npc.ID)
@@ -598,6 +752,148 @@ func (m Model) primarySuggestion() string {
 		return "调查环境，或输入 /hint 获取不剧透提示"
 	}
 	return "围绕最新线索继续追问，或用 /sheet 检查调查员状态"
+}
+
+func (m Model) currentObjective() scenario.Objective {
+	return scenario.ObjectiveForStage(m.scn, m.currentStage())
+}
+
+func (m Model) currentStage() string {
+	if m.stage != "" {
+		if stage := scenario.NormalizeStage(m.scn, m.stage); stage != "" {
+			return stage
+		}
+	}
+	if m.save.Stage != "" {
+		if stage := scenario.NormalizeStage(m.scn, m.save.Stage); stage != "" {
+			return stage
+		}
+	}
+	return scenario.DefaultStage
+}
+
+func (m Model) actionOptions() []string {
+	choices := m.actionChoices()
+	out := make([]string, 0, len(choices))
+	for _, choice := range choices {
+		out = append(out, choice.label)
+	}
+	return out
+}
+
+func (m Model) actionChoices() []suggestedAction {
+	actions := []suggestedAction{}
+	if loc, ok := m.scenarioLocation(); ok {
+		for _, lead := range loc.Leads {
+			lead = strings.TrimSpace(lead)
+			if lead != "" {
+				actions = append(actions, suggestedAction{label: lead, input: lead})
+			}
+		}
+	}
+	if len(actions) > 3 {
+		actions = actions[:3]
+	}
+	actions = append(actions, m.itemActions()...)
+	actions = append(actions, m.dialogueActions()...)
+	if len(actions) == 0 && m.location.Name != "" {
+		text := "观察" + m.location.Name + "，寻找异常痕迹或可调查的物件"
+		actions = append(actions, suggestedAction{label: text, input: text})
+	}
+	if len(actions) == 0 {
+		return nil
+	}
+	if len(actions) > 5 {
+		actions = actions[:5]
+	}
+	return actions
+}
+
+func (m Model) dialogueActions() []suggestedAction {
+	if m.scn == nil || len(m.npcs) == 0 {
+		return nil
+	}
+	found := m.foundClueSet()
+	stage := m.currentStage()
+	out := []suggestedAction{}
+	for _, npc := range m.npcs {
+		snpc, ok := m.scenarioNPC(npc.ID)
+		if !ok {
+			continue
+		}
+		for _, opt := range scenario.DialogueOptionsFor(snpc, stage, found) {
+			prompt := strings.TrimSpace(opt.Prompt)
+			if prompt != "" {
+				label := fmt.Sprintf("询问%s：%s", nonEmpty(snpc.Name, npc.Name), opt.Label)
+				out = append(out, suggestedAction{label: label, input: prompt})
+			}
+		}
+	}
+	return out
+}
+
+func (m Model) itemActions() []suggestedAction {
+	if m.scn == nil || len(m.items) == 0 {
+		return nil
+	}
+	found := m.foundClueSet()
+	stage := m.currentStage()
+	out := []suggestedAction{}
+	for _, state := range m.items {
+		sitem, ok := m.scenarioItem(state.ID)
+		if !ok {
+			continue
+		}
+		for _, action := range scenario.ItemActionsFor(sitem, state, stage, m.location.ID, found) {
+			label := fmt.Sprintf("使用%s：%s", nonEmpty(sitem.Name, state.Name), action.Label)
+			out = append(out, suggestedAction{label: label, input: strings.TrimSpace(action.Prompt)})
+		}
+	}
+	return out
+}
+
+func (m Model) foundClueSet() map[string]bool {
+	found := make(map[string]bool, len(m.clues))
+	for _, clue := range m.clues {
+		found[clue.ID] = true
+	}
+	return found
+}
+
+func (m Model) scenarioNPC(id string) (scenario.SNPC, bool) {
+	if m.scn == nil {
+		return scenario.SNPC{}, false
+	}
+	for _, npc := range m.scn.NPCs {
+		if npc.ID == id {
+			return npc, true
+		}
+	}
+	return scenario.SNPC{}, false
+}
+
+func (m Model) scenarioItem(id string) (scenario.SItem, bool) {
+	if m.scn == nil {
+		return scenario.SItem{}, false
+	}
+	for _, item := range m.scn.Items {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return scenario.SItem{}, false
+}
+
+func (m Model) scenarioLocation() (scenario.SLocation, bool) {
+	if m.scn == nil {
+		return scenario.SLocation{}, false
+	}
+	for _, loc := range m.scn.Locations {
+		if loc.ID == m.location.ID {
+			return loc, true
+		}
+	}
+	return scenario.SLocation{}, false
 }
 
 func (m Model) renderMainStage(width, height int) string {
@@ -747,6 +1043,25 @@ func (m Model) scenePanelLines() []string {
 	if alert := m.latestErrorSummary(); alert != "" {
 		lines = append(lines, "", errorStyle.Render("注意"), "  "+alert)
 	}
+	if objective := m.currentObjective(); objective.Title != "" {
+		lines = append(lines, "", labelStyle.Render("当前目标"), "  "+objective.Title)
+		for i, step := range objective.Steps {
+			if i >= 2 {
+				break
+			}
+			lines = append(lines, "  - "+step)
+		}
+	}
+	if actions := m.actionOptions(); len(actions) > 0 {
+		lines = append(lines, "", labelStyle.Render("可选行动"))
+		for i, action := range actions {
+			prefix := fmt.Sprintf("  %d. ", i+1)
+			if i == m.actionIndex%len(actions) {
+				prefix = accentStyle.Render("› " + fmt.Sprintf("%d. ", i+1))
+			}
+			lines = append(lines, prefix+action)
+		}
+	}
 
 	lines = append(lines, "", labelStyle.Render("在场人物"))
 	if len(m.npcs) == 0 {
@@ -776,6 +1091,21 @@ func (m Model) peoplePanelLines() []string {
 	if m.inv.InventoryJSON != "" {
 		lines = append(lines, "  背包 "+m.inv.InventoryJSON)
 	}
+	if carried := m.carriedItems(); len(carried) > 0 {
+		lines = append(lines, "", labelStyle.Render("携带物"))
+		for _, item := range carried {
+			lines = append(lines, "  "+item.Name)
+			if sitem, ok := m.scenarioItem(item.ID); ok {
+				actions := scenario.ItemActionsFor(sitem, item, m.currentStage(), m.location.ID, m.foundClueSet())
+				for i, action := range actions {
+					if i >= 2 {
+						break
+					}
+					lines = append(lines, "    可用："+action.Label)
+				}
+			}
+		}
+	}
 
 	lines = append(lines, "", labelStyle.Render("人物"))
 	if len(m.npcs) == 0 {
@@ -791,8 +1121,27 @@ func (m Model) peoplePanelLines() []string {
 		if npc.Personality != "" {
 			lines = append(lines, "    "+npc.Personality)
 		}
+		if snpc, ok := m.scenarioNPC(npc.ID); ok {
+			options := scenario.DialogueOptionsFor(snpc, m.currentStage(), m.foundClueSet())
+			for i, opt := range options {
+				if i >= 2 {
+					break
+				}
+				lines = append(lines, "    可问："+opt.Label)
+			}
+		}
 	}
 	return lines
+}
+
+func (m Model) carriedItems() []store.Item {
+	out := []store.Item{}
+	for _, item := range m.items {
+		if item.OwnerType == store.OwnerInvestigator && !item.Destroyed {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func (m Model) cluePanelLines() []string {
@@ -914,6 +1263,9 @@ func (m Model) commandGuide() string {
 		if len(names) > 0 {
 			return "Tab 补全目标 · " + strings.Join(names, " · ")
 		}
+	}
+	if strings.TrimSpace(m.input.Value()) == "" && len(m.actionOptions()) > 0 {
+		return "↑/↓ 选择行动 · 1-5 填入 · Enter 执行 · Ctrl+P 命令 · ? 帮助"
 	}
 	return "Enter 发送 · Tab 补全 · /hint 提示 · /talk 对话 · /sheet 状态 · /inv 背包"
 }
@@ -1235,6 +1587,19 @@ func displayTimeOfDay(t store.TimeOfDay) string {
 		return "夜晚"
 	default:
 		return "未知时段"
+	}
+}
+
+func displayStage(stage string) string {
+	switch strings.ToLower(strings.TrimSpace(stage)) {
+	case "opening", "act1":
+		return "开局"
+	case "investigation", "act2":
+		return "调查"
+	case "confrontation", "act3":
+		return "对峙"
+	default:
+		return nonEmpty(stage, "开局")
 	}
 }
 

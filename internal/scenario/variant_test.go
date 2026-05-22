@@ -34,6 +34,7 @@ func TestSelectVariant_ByID(t *testing.T) {
 		require.NoError(t, err, id)
 		assert.Equal(t, id, vid)
 		require.NotNil(t, eff)
+		assert.NotEmpty(t, eff.Culprit)
 		assert.Empty(t, eff.Variants, "effective scenario should have variants cleared")
 		// effective scenario 必须仍能通过完整校验
 		require.NoError(t, Validate(eff), "%s merged should pass Validate", id)

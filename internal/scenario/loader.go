@@ -146,9 +146,44 @@ func Validate(s *Scenario) error {
 			}
 		}
 	}
+	seenObjectiveStages := map[string]bool{}
+	for _, obj := range s.Objectives {
+		if seenObjectiveStages[obj.Stage] {
+			return fmt.Errorf("scenario: duplicate objective stage %q", obj.Stage)
+		}
+		seenObjectiveStages[obj.Stage] = true
+	}
+	if len(seenObjectiveStages) > 0 && !seenObjectiveStages[DefaultStage] {
+		return fmt.Errorf("scenario: objectives must include %q stage", DefaultStage)
+	}
 	for _, n := range s.NPCs {
 		if n.Location != "" && !locSet[n.Location] {
 			return fmt.Errorf("scenario: npc %s references unknown location %q", n.ID, n.Location)
+		}
+		seenDialogueOptions := map[string]bool{}
+		for _, opt := range n.DialogueOptions {
+			if opt.ID == "" || opt.Label == "" || opt.Prompt == "" {
+				return fmt.Errorf("scenario: npc %s dialogue option requires id, label and prompt", n.ID)
+			}
+			if seenDialogueOptions[opt.ID] {
+				return fmt.Errorf("scenario: npc %s duplicate dialogue option %q", n.ID, opt.ID)
+			}
+			seenDialogueOptions[opt.ID] = true
+			for _, stage := range opt.Stages {
+				if len(seenObjectiveStages) > 0 && !seenObjectiveStages[stage] {
+					return fmt.Errorf("scenario: npc %s dialogue option %s references unknown stage %q", n.ID, opt.ID, stage)
+				}
+			}
+			for _, clue := range opt.RequiresClues {
+				if !clueSet[clue] {
+					return fmt.Errorf("scenario: npc %s dialogue option %s requires unknown clue %q", n.ID, opt.ID, clue)
+				}
+			}
+			for _, clue := range opt.SuppressIfClues {
+				if !clueSet[clue] {
+					return fmt.Errorf("scenario: npc %s dialogue option %s suppresses unknown clue %q", n.ID, opt.ID, clue)
+				}
+			}
 		}
 	}
 	for _, c := range s.Clues {
@@ -172,6 +207,43 @@ func Validate(s *Scenario) error {
 		case "investigator", "none":
 			// no FK
 		}
+		seenItemActions := map[string]bool{}
+		for _, action := range it.Actions {
+			if action.ID == "" || action.Label == "" || action.Prompt == "" {
+				return fmt.Errorf("scenario: item %s action requires id, label and prompt", it.ID)
+			}
+			if seenItemActions[action.ID] {
+				return fmt.Errorf("scenario: item %s duplicate action %q", it.ID, action.ID)
+			}
+			seenItemActions[action.ID] = true
+			for _, stage := range action.Stages {
+				if len(seenObjectiveStages) > 0 && !seenObjectiveStages[stage] {
+					return fmt.Errorf("scenario: item %s action %s references unknown stage %q", it.ID, action.ID, stage)
+				}
+			}
+			for _, loc := range action.Locations {
+				if !locSet[loc] {
+					return fmt.Errorf("scenario: item %s action %s references unknown location %q", it.ID, action.ID, loc)
+				}
+			}
+			for _, ownerType := range action.OwnerTypes {
+				switch ownerType {
+				case "npc", "location", "investigator", "none":
+				default:
+					return fmt.Errorf("scenario: item %s action %s has invalid owner_type %q", it.ID, action.ID, ownerType)
+				}
+			}
+			for _, clue := range action.RequiresClues {
+				if !clueSet[clue] {
+					return fmt.Errorf("scenario: item %s action %s requires unknown clue %q", it.ID, action.ID, clue)
+				}
+			}
+			for _, clue := range action.SuppressIfClues {
+				if !clueSet[clue] {
+					return fmt.Errorf("scenario: item %s action %s suppresses unknown clue %q", it.ID, action.ID, clue)
+				}
+			}
+		}
 	}
 	for _, kc := range s.KeyClues {
 		if !clueSet[kc] {
@@ -186,7 +258,7 @@ func Validate(s *Scenario) error {
 			return fmt.Errorf("trigger %s: empty actions", t.ID)
 		}
 		for i, a := range t.Then {
-			if err := validateAction(a, npcSet, clueSet); err != nil {
+			if err := validateAction(a, npcSet, clueSet, seenObjectiveStages); err != nil {
 				return fmt.Errorf("trigger %s action[%d]: %w", t.ID, i, err)
 			}
 		}
@@ -354,7 +426,7 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 	return nil
 }
 
-func validateAction(a Action, npcs, clues map[string]bool) error {
+func validateAction(a Action, npcs, clues, stages map[string]bool) error {
 	count := 0
 	if a.AddEvent != nil {
 		count++
@@ -382,6 +454,12 @@ func validateAction(a Action, npcs, clues map[string]bool) error {
 	}
 	if a.AdvanceTime > 0 {
 		count++
+	}
+	if a.SetStage != "" {
+		count++
+		if len(stages) > 0 && !stages[a.SetStage] {
+			return fmt.Errorf("set_stage references unknown stage %q", a.SetStage)
+		}
 	}
 	if count == 0 {
 		return fmt.Errorf("empty action")
