@@ -186,6 +186,18 @@ func RenderPlayerGuidance(s *Scenario) string {
 			}
 		}
 	}
+	if len(s.Threats) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## 风险轨\n")
+		for _, threat := range s.Threats {
+			fmt.Fprintf(&b, "- %s：%s\n", threat.Name, strings.TrimSpace(threat.Description))
+			for _, state := range threat.States {
+				fmt.Fprintf(&b, "  - %s（%d）：%s\n", strings.TrimSpace(state.Label), state.Severity, strings.TrimSpace(state.Description))
+			}
+		}
+	}
 	if len(s.NPCs) > 0 {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -223,6 +235,21 @@ func RenderPlayerGuidance(s *Scenario) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func RenderThreatStatuses(statuses []ThreatStatus) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, status := range statuses {
+		fmt.Fprintf(&b, "- %s：%s（风险 %d）", status.Name, status.StateLabel, status.Severity)
+		if status.StateDescription != "" {
+			fmt.Fprintf(&b, " — %s", strings.TrimSpace(status.StateDescription))
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // RenderNPCSecrets 返回每位 NPC 的隐藏动机表（markdown）。

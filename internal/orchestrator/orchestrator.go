@@ -203,6 +203,10 @@ func (o *Orchestrator) renderSystemPrompt(ctx context.Context) (string, error) {
 		stage = scenario.DefaultStage
 	}
 	objective := scenario.ObjectiveForStage(o.cfg.Scenario, stage)
+	threats, threatErr := o.engine.Threats(ctx, o.cfg.SaveID)
+	if threatErr != nil {
+		return "", fmt.Errorf("threats: %w", threatErr)
+	}
 
 	scenarioContext := fmt.Sprintf("剧本: %s（%s, v%s）；当前回合 %d；时段 %s；当前阶段 %s",
 		o.cfg.Scenario.Title, o.cfg.Scenario.ID, o.cfg.Scenario.Version, sv.TurnCount, sv.TimeOfDay, stage)
@@ -217,6 +221,7 @@ func (o *Orchestrator) renderSystemPrompt(ctx context.Context) (string, error) {
 		NPCKnowledge:    scenario.RenderNPCKnowledge(o.cfg.Scenario),
 		ClueAtlas:       scenario.RenderClueAtlas(o.cfg.Scenario),
 		PlayerGuidance:  scenario.RenderPlayerGuidance(o.cfg.Scenario),
+		ThreatStatus:    scenario.RenderThreatStatuses(threats),
 	}
 	if o.cfg.Meta != nil {
 		pc.PlayerPrior = o.cfg.Meta.RenderForGM()

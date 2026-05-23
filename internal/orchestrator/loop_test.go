@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -20,12 +21,14 @@ import (
 
 // fakeLLM 把固定脚本回放为 *agent.Message。每个 script 是已 marshal 的 message JSON。
 type fakeLLM struct {
-	scripts []string
-	calls   int
-	err     error
+	scripts  []string
+	calls    int
+	err      error
+	requests []agent.MessageRequest
 }
 
-func (f *fakeLLM) NewMessage(_ context.Context, _ agent.MessageRequest) (*agent.Message, error) {
+func (f *fakeLLM) NewMessage(_ context.Context, req agent.MessageRequest) (*agent.Message, error) {
+	f.requests = append(f.requests, req)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -137,6 +140,10 @@ func TestRunTurn_HappyPath(t *testing.T) {
 	assert.Contains(t, res.Narrative, "你看到桌上有一封信")
 	assert.Empty(t, res.SLAReport.Violations)
 	assert.NotNil(t, res.Trace.ToolCalls)
+	assert.Equal(t, IntentInvestigate, res.Decision.Intent)
+	assert.Equal(t, IntentInvestigate, res.Action.Kind)
+	require.NotEmpty(t, res.Decision.Mechanics)
+	assert.Equal(t, "roll_skill", res.Decision.Mechanics[0].Tool)
 
 	// turn count 应推进
 	sv, _ := st.Repo().GetSave(ctx, saveID)
@@ -162,14 +169,39 @@ func TestRunTurn_TransitionLocationPersists(t *testing.T) {
 	}}
 	o, st, saveID, ctx := newOrchestrator(t, llm)
 
-	_, err := o.RunTurn(ctx, "去酒馆")
+	res, err := o.RunTurn(ctx, "去酒馆")
 	require.NoError(t, err)
+	require.NotNil(t, res.Summary.LocationChange)
+	assert.Equal(t, "雾港码头", res.Summary.LocationChange.From)
+	assert.Equal(t, "钨灯酒馆", res.Summary.LocationChange.To)
+	assert.Equal(t, IntentMove, res.Decision.Intent)
+	assert.Equal(t, IntentMove, res.Action.Kind)
+	assert.True(t, hasActionTarget(res.Action, "location", "pub"))
+	assert.Contains(t, res.Decision.StateChanges, DecisionChange{Kind: "location", From: "雾港码头", To: "钨灯酒馆"})
 
 	sv, err := st.Repo().GetSave(ctx, saveID)
 	require.NoError(t, err)
 	assert.Equal(t, "pub", sv.CurrentLocationID,
 		"transition_location 写入的新 location 必须保留，不能被回合末推进 turn count 时覆盖")
 	assert.Equal(t, 1, sv.TurnCount)
+}
+
+func TestRunTurn_InjectsActionBriefIntoGMInput(t *testing.T) {
+	llm := &fakeLLM{scripts: []string{
+		msgWith("end_turn", textBlk("你抵达酒馆。")),
+	}}
+	o, _, _, ctx := newOrchestrator(t, llm)
+
+	_, err := o.RunTurn(ctx, "去酒馆")
+	require.NoError(t, err)
+	require.NotEmpty(t, llm.requests)
+
+	userText := lastUserText(llm.requests[0])
+	assert.Contains(t, userText, "本回合玩家行动")
+	assert.Contains(t, userText, "类型：移动")
+	assert.Contains(t, userText, "location pub")
+	assert.Contains(t, userText, "规则门卫：已允许")
+	assert.Contains(t, userText, "本回合只围绕上述行动和目标裁定")
 }
 
 func TestRunTurn_TriggersFire(t *testing.T) {
@@ -190,6 +222,11 @@ func TestRunTurn_TriggersFire(t *testing.T) {
 
 	res, err := o.RunTurn(ctx, "去灯塔")
 	require.NoError(t, err)
+	require.NotEmpty(t, res.Summary.NewClues)
+	assert.Equal(t, "blood_letter", res.Summary.NewClues[0].ID)
+	require.NotEmpty(t, res.Summary.ThreatChanges)
+	assert.Equal(t, "reef_window", res.Summary.ThreatChanges[0].ID)
+	assert.True(t, decisionHasChange(res.Decision, "clue", "blood_letter"))
 	ids := []string{}
 	for _, f := range res.Fired {
 		ids = append(ids, f.ID)
@@ -377,4 +414,30 @@ func mustSave(t *testing.T, st *store.Store, ctx context.Context, id string) sto
 	sv, err := st.Repo().GetSave(ctx, id)
 	require.NoError(t, err)
 	return sv
+}
+
+func decisionHasChange(decision TurnDecision, kind, id string) bool {
+	for _, change := range decision.StateChanges {
+		if change.Kind == kind && change.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func lastUserText(req agent.MessageRequest) string {
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		msg := req.Messages[i]
+		if msg.Role != agent.RoleUser {
+			continue
+		}
+		parts := []string{}
+		for _, block := range msg.Content {
+			if block.Type == "text" {
+				parts = append(parts, block.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
 }

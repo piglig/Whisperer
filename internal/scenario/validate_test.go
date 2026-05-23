@@ -166,6 +166,23 @@ npcs:
         requires_clues: [missing]
 start: {location: a}
 key_clues: []`,
+		"unknown clue in threat state": `
+id: x
+title: t
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs: []
+threats:
+  - id: danger
+    name: Danger
+    states:
+      - id: calm
+        label: Calm
+      - id: marked
+        label: Marked
+        when: {clue_found: missing}
+start: {location: a}
+key_clues: []`,
 		"unknown location in item action": `
 id: x
 title: t

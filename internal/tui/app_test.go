@@ -83,6 +83,21 @@ func testScenario() *scenario.Scenario {
 				Steps: []string{"追问账册", "争取玛丽莎信任"},
 			},
 		},
+		Threats: []scenario.Threat{
+			{
+				ID:   "cloth_seen",
+				Name: "布片风险",
+				States: []scenario.ThreatState{
+					{ID: "quiet", Label: "平稳"},
+					{
+						ID:       "marked",
+						Label:    "已出现",
+						Severity: 2,
+						When:     scenario.Condition{ClueFound: "cloth"},
+					},
+				},
+			},
+		},
 		Locations: []scenario.SLocation{
 			{
 				ID:          "harbor",
@@ -277,6 +292,7 @@ func TestFormatCaseReport(t *testing.T) {
 			{ID: "reef_carvings", Description: "礁洞拓片"},
 		},
 		NPCOutcomes:  []scenario.NPCOutcome{{ID: "anna", Name: "安娜", Alive: false}},
+		Threats:      []scenario.ThreatStatus{{Name: "安娜危险", StateLabel: "失踪", Severity: 4}},
 		TruthSummary: "本局真相摘要",
 	}
 
@@ -286,7 +302,29 @@ func TestFormatCaseReport(t *testing.T) {
 	assert.Contains(t, out, "账册")
 	assert.Contains(t, out, "礁洞拓片")
 	assert.Contains(t, out, "安娜")
+	assert.Contains(t, out, "风险结算")
 	assert.Contains(t, out, "本局真相摘要")
+}
+
+func TestFormatTurnSummary(t *testing.T) {
+	out := formatTurnSummary(orchestrator.TurnSummary{
+		LocationChange: &orchestrator.ValueChange{From: "雾港码头", To: "钨灯酒馆"},
+		TimeChange:     &orchestrator.ValueChange{From: string(store.TimeMorning), To: string(store.TimeAfternoon)},
+		StageChange:    &orchestrator.ValueChange{From: "opening", To: "investigation"},
+		NewClues:       []orchestrator.SummaryClue{{ID: "ledger", Description: "账册"}},
+		NPCChanges: []orchestrator.SummaryNPC{{
+			ID: "marisa", Name: "玛丽莎", RelationFrom: 5, RelationTo: 10,
+		}},
+		ThreatChanges: []orchestrator.SummaryThreat{{Name: "安娜危险", From: "被盯上", To: "高危"}},
+	})
+
+	assert.Contains(t, out, "回合摘要")
+	assert.Contains(t, out, "雾港码头 → 钨灯酒馆")
+	assert.Contains(t, out, "清晨 → 午后")
+	assert.Contains(t, out, "开局 → 调查")
+	assert.Contains(t, out, "账册")
+	assert.Contains(t, out, "玛丽莎")
+	assert.Contains(t, out, "安娜危险")
 }
 
 func TestModel_QuitOnCtrlC(t *testing.T) {
@@ -447,14 +485,21 @@ func TestModel_SuggestedActionsFillAndSubmit(t *testing.T) {
 	updated, _ := m.Update(m.loadSnapshotCmd()())
 	mm := updated.(Model)
 	mm.width = 120
-	mm.height = 30
+	mm.height = 36
 
 	view := mm.View()
+	assert.Contains(t, view, "风险")
+	assert.Contains(t, view, "布片风险")
 	assert.Contains(t, view, "可选行动")
-	assert.Contains(t, view, "1. 查看公告栏上的失踪启事")
-	assert.Contains(t, view, "4. 使用黄铜油灯")
+	assert.Contains(t, view, "1. 调查 · 查看公告栏上的失踪启事")
+	assert.Contains(t, view, "4. 使用 · 使用黄铜油灯")
 	assert.Contains(t, view, "↑/↓ 选择行动")
 	assert.Contains(t, strings.Join(mm.actionOptions(), "\n"), "询问范斯：问露西是否找过他")
+	encoded := mm.selectedAction()
+	action, ok := orchestrator.DecodePlayerAction(encoded)
+	require.True(t, ok)
+	assert.Equal(t, "lead", action.Source.Kind)
+	assert.Equal(t, "harbor:0", action.Source.ID)
 
 	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 	mm = updated.(Model)

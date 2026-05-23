@@ -29,6 +29,99 @@ objectives:
       - 找到足够证据后再对峙嫌疑人。
       - 如果进入礁洞，优先寻找露西的实物证据和非人契约的源头。
 
+threats:
+  - id: anna_danger
+    name: 安娜危险
+    description: 范斯正在筛选下一名祭品；安娜越晚得到保护越危险。
+    states:
+      - id: unseen
+        label: 尚未卷入
+        severity: 0
+        description: 你还没有确认安娜与本案的关系。
+      - id: marked
+        label: 被盯上
+        severity: 1
+        description: 安娜已出现在证据链边缘，范斯的照顾并不单纯。
+        when:
+          clue_found: anna_warning
+      - id: critical
+        label: 高危
+        severity: 3
+        description: 夜色推进，而安娜仍未得到保护。
+        when:
+          turn_ge: 18
+      - id: taken
+        label: 失踪
+        severity: 4
+        description: 安娜已经失踪，雾港又吞下一名牺牲者。
+        when:
+          npc_dead: anna
+
+  - id: rourke_pressure
+    name: 罗克压力
+    description: 罗克长官会随着调查推进加强驱逐和阻挠。
+    states:
+      - id: watching
+        label: 观察
+        severity: 0
+        description: 罗克还在判断你是否只是路过的记者。
+      - id: warning
+        label: 警告
+        severity: 2
+        description: 罗克已经开始正式警告你离港。
+        when:
+          trigger_fired: rourke_warns
+      - id: expulsion
+        label: 驱逐临近
+        severity: 4
+        description: 罗克的耐心已耗尽，再激怒他可能直接导致失败。
+        when:
+          npc_relation_lt:
+            npc: rourke
+            value: -19
+
+  - id: reef_window
+    name: 礁洞窗口
+    description: 暴风低潮决定礁洞何时可进入，也决定第三幕节奏。
+    states:
+      - id: closed
+        label: 未开放
+        severity: 0
+        description: 礁洞入口仍被潮水遮住。
+      - id: storm
+        label: 暴风将至
+        severity: 2
+        description: 灯塔下方传出低鸣，低潮窗口正在逼近。
+        when:
+          trigger_fired: lighthouse_storm
+      - id: open
+        label: 入口开放
+        severity: 3
+        description: 暴风低潮已露出礁洞入口，可以进入但风险极高。
+        when:
+          trigger_fired: reef_cave_open
+
+  - id: helena_resolve
+    name: 海莲娜状态
+    description: 海莲娜的希望会随调查拖延而被消耗。
+    states:
+      - id: hopeful
+        label: 仍有希望
+        severity: 0
+        description: 海莲娜仍相信你能认真追查。
+      - id: fading
+        label: 接近崩溃
+        severity: 2
+        description: 等待正在消耗海莲娜，她开始怀疑你也无能为力。
+        when:
+          trigger_fired: helena_despairs
+      - id: lost
+        label: 已失去
+        severity: 4
+        description: 海莲娜已经无法继续支撑。
+        when:
+          npc_dead: helena
+
 # 剧本背景真相（GM-only；variant 会覆盖此默认）。
 # 默认 truth 对应 vance_pact 这一最常见 variant；其他 variant 会在 SelectVariant 时 patch。
 truth: |
@@ -509,7 +602,7 @@ triggers:
   - id: pub_after_dark
     when:
       all:
-        - location_visited: pub
+        - current_location: pub
         - time_of_day: night
     then:
       - update_npc_relation:
@@ -529,7 +622,7 @@ triggers:
   - id: church_records_unlocked
     when:
       all:
-        - location_visited: church
+        - current_location: church
         - npc_relation_gt:
             npc: father_calvin
             value: 9
@@ -545,7 +638,7 @@ triggers:
   - id: lucy_room_search
     when:
       all:
-        - location_visited: station
+        - current_location: station
         - npc_relation_gt:
             npc: helena
             value: 14
@@ -561,7 +654,7 @@ triggers:
     when:
       all:
         - clue_found: tide_chart
-        - location_visited: lighthouse
+        - current_location: lighthouse
         - time_of_day: night
     then:
       - update_npc_relation:
@@ -590,7 +683,7 @@ triggers:
     when:
       all:
         - clue_found: reef_carvings
-        - location_visited: pub
+        - current_location: pub
     then:
       - update_npc_relation:
           npc_id: vance
@@ -603,7 +696,7 @@ triggers:
   - id: anna_warns
     when:
       all:
-        - location_visited: pub
+        - current_location: pub
         - turn_ge: 5
     then:
       - add_event:
@@ -631,7 +724,7 @@ triggers:
   - id: cloth_at_low_tide
     when:
       all:
-        - location_visited: harbor
+        - current_location: harbor
         - trigger_fired: lighthouse_storm
     then:
       - mark_clue_found:
@@ -644,7 +737,7 @@ triggers:
   - id: empty_graves_seen
     when:
       all:
-        - location_visited: church
+        - current_location: church
         - npc_relation_gt:
             npc: father_calvin
             value: 4
@@ -795,7 +888,7 @@ variants:
         when:
           all:
             - clue_found: parish_record
-            - location_visited: church
+            - current_location: church
     ending_desc_overrides:
       solved: 报道揭穿教区邪教与神父的精神主导。范斯协助警方做了证人，免于检控。神父在审讯室静默以对——第三天早晨被发现已自尽。
       pact_broken: 你说服 vance 协助——他焚烧了神父私藏的古铭文。深潜者撤回。教区从此分裂；老一代信徒离镇。
@@ -827,12 +920,12 @@ variants:
       church_records_unlocked:
         when:
           all:
-            - location_visited: church
+            - current_location: church
       culprit_confronted:
         when:
           all:
             - clue_found: rourke_bribe
-            - location_visited: station
+            - current_location: station
     ending_desc_overrides:
       solved: 罗克长官被逮捕。范斯协助警方做了证人，免于检控但永久吊销执照。报道发出后，州警接管雾港巡警所。
       pact_broken: 卡尔文神父在低潮时焚烧古铭文。罗克入狱，vance 自首。深潜者撤回。三十年的契约就此中止。

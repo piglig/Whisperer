@@ -156,6 +156,26 @@ func Validate(s *Scenario) error {
 	if len(seenObjectiveStages) > 0 && !seenObjectiveStages[DefaultStage] {
 		return fmt.Errorf("scenario: objectives must include %q stage", DefaultStage)
 	}
+	seenThreatIDs := map[string]bool{}
+	for _, threat := range s.Threats {
+		if seenThreatIDs[threat.ID] {
+			return fmt.Errorf("scenario: duplicate threat %q", threat.ID)
+		}
+		seenThreatIDs[threat.ID] = true
+		seenStateIDs := map[string]bool{}
+		for i, state := range threat.States {
+			if seenStateIDs[state.ID] {
+				return fmt.Errorf("scenario: threat %s duplicate state %q", threat.ID, state.ID)
+			}
+			seenStateIDs[state.ID] = true
+			if conditionIsZero(state.When) {
+				continue
+			}
+			if err := validateCondition(&state.When, locSet, npcSet, clueSet, idsOfTriggersSet(s.Triggers)); err != nil {
+				return fmt.Errorf("threat %s state[%d]: %w", threat.ID, i, err)
+			}
+		}
+	}
 	for _, n := range s.NPCs {
 		if n.Location != "" && !locSet[n.Location] {
 			return fmt.Errorf("scenario: npc %s references unknown location %q", n.ID, n.Location)
@@ -347,9 +367,8 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 	if c == nil {
 		return fmt.Errorf("condition is nil")
 	}
-	count := 0
+	count := conditionFieldCount(*c)
 	if len(c.All) > 0 {
-		count++
 		for i := range c.All {
 			if err := validateCondition(&c.All[i], locs, npcs, clues, triggers); err != nil {
 				return fmt.Errorf("all[%d]: %w", i, err)
@@ -357,7 +376,6 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 		}
 	}
 	if len(c.Any) > 0 {
-		count++
 		for i := range c.Any {
 			if err := validateCondition(&c.Any[i], locs, npcs, clues, triggers); err != nil {
 				return fmt.Errorf("any[%d]: %w", i, err)
@@ -365,54 +383,48 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 		}
 	}
 	if c.Not != nil {
-		count++
 		if err := validateCondition(c.Not, locs, npcs, clues, triggers); err != nil {
 			return fmt.Errorf("not: %w", err)
 		}
 	}
 	if c.LocationVisited != "" {
-		count++
 		if !locs[c.LocationVisited] {
 			return fmt.Errorf("location_visited references unknown %q", c.LocationVisited)
 		}
 	}
+	if c.CurrentLocation != "" {
+		if !locs[c.CurrentLocation] {
+			return fmt.Errorf("current_location references unknown %q", c.CurrentLocation)
+		}
+	}
 	if c.ClueFound != "" {
-		count++
 		if !clues[c.ClueFound] {
 			return fmt.Errorf("clue_found references unknown %q", c.ClueFound)
 		}
 	}
 	if c.NPCDead != "" {
-		count++
 		if !npcs[c.NPCDead] {
 			return fmt.Errorf("npc_dead references unknown %q", c.NPCDead)
 		}
 	}
 	if c.NPCRelationLT != nil {
-		count++
 		if !npcs[c.NPCRelationLT.NPC] {
 			return fmt.Errorf("npc_relation_lt references unknown npc %q", c.NPCRelationLT.NPC)
 		}
 	}
 	if c.NPCRelationGT != nil {
-		count++
 		if !npcs[c.NPCRelationGT.NPC] {
 			return fmt.Errorf("npc_relation_gt references unknown npc %q", c.NPCRelationGT.NPC)
 		}
 	}
 	if c.TimeOfDay != "" {
-		count++
 		switch c.TimeOfDay {
 		case "morning", "afternoon", "night":
 		default:
 			return fmt.Errorf("invalid time_of_day %q", c.TimeOfDay)
 		}
 	}
-	if c.TurnGE > 0 {
-		count++
-	}
 	if c.TriggerFired != "" {
-		count++
 		if !triggers[c.TriggerFired] {
 			return fmt.Errorf("trigger_fired references unknown %q", c.TriggerFired)
 		}
@@ -424,6 +436,51 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 		return fmt.Errorf("condition is union: exactly one field must be set, got %d", count)
 	}
 	return nil
+}
+
+func conditionIsZero(c Condition) bool {
+	return conditionFieldCount(c) == 0
+}
+
+func conditionFieldCount(c Condition) int {
+	count := 0
+	if len(c.All) > 0 {
+		count++
+	}
+	if len(c.Any) > 0 {
+		count++
+	}
+	if c.Not != nil {
+		count++
+	}
+	if c.LocationVisited != "" {
+		count++
+	}
+	if c.CurrentLocation != "" {
+		count++
+	}
+	if c.ClueFound != "" {
+		count++
+	}
+	if c.NPCDead != "" {
+		count++
+	}
+	if c.NPCRelationLT != nil {
+		count++
+	}
+	if c.NPCRelationGT != nil {
+		count++
+	}
+	if c.TimeOfDay != "" {
+		count++
+	}
+	if c.TurnGE > 0 {
+		count++
+	}
+	if c.TriggerFired != "" {
+		count++
+	}
+	return count
 }
 
 func validateAction(a Action, npcs, clues, stages map[string]bool) error {

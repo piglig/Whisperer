@@ -21,11 +21,16 @@ func buildCaseReport(ctx context.Context, repo *store.Repository, saveID string,
 		}
 		npcs = append(npcs, npc)
 	}
+	threats, err := scenario.New(scn, repo, nil).Threats(ctx, saveID)
+	if err != nil {
+		return nil, fmt.Errorf("threats: %w", err)
+	}
 	return scenario.BuildCaseReport(scn, scenario.CaseReportInput{
 		Save:       sv,
 		Ending:     ending,
 		VariantID:  variantID,
 		FoundClues: found,
 		NPCs:       npcs,
+		Threats:    threats,
 	}), nil
 }

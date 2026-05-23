@@ -76,6 +76,8 @@ func TestRenderPlayerGuidance(t *testing.T) {
 	assert.Contains(t, out, "失踪当晚")
 	assert.Contains(t, out, "## 物品行动")
 	assert.Contains(t, out, "黄铜油灯")
+	assert.Contains(t, out, "## 风险轨")
+	assert.Contains(t, out, "安娜危险")
 	assert.NotContains(t, out, "深潜者长老作为契约的非人方现身")
 }
 
@@ -137,6 +139,7 @@ func TestBuildCaseReport(t *testing.T) {
 			{ID: "vance", Name: "范斯医生", Alive: true, RelationToPlayer: -50},
 			{ID: "anna", Name: "安娜", Alive: false, RelationToPlayer: 0},
 		},
+		Threats:    []ThreatStatus{{ID: "anna_danger", Name: "安娜危险", StateLabel: "失踪", Severity: 4}},
 		TruthLimit: 80,
 	})
 
@@ -147,7 +150,17 @@ func TestBuildCaseReport(t *testing.T) {
 	assert.Len(t, report.FoundKeyClues, 2)
 	assert.NotEmpty(t, report.MissingKeyClues)
 	assert.Contains(t, report.EvidenceStatus, "缺口")
+	require.Len(t, report.Threats, 1)
 	assert.NotEmpty(t, report.TruthSummary)
+}
+
+func TestRenderThreatStatuses(t *testing.T) {
+	out := RenderThreatStatuses([]ThreatStatus{
+		{Name: "安娜危险", StateLabel: "高危", Severity: 3, StateDescription: "夜色推进"},
+	})
+	assert.Contains(t, out, "安娜危险")
+	assert.Contains(t, out, "高危")
+	assert.Contains(t, out, "风险 3")
 }
 
 func TestRender_NPCKnowledgeForSingleNPC(t *testing.T) {

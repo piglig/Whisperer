@@ -44,8 +44,9 @@ type logEntry struct {
 }
 
 type suggestedAction struct {
-	label string
-	input string
+	label  string
+	input  string
+	action orchestrator.PlayerAction
 }
 
 // turnDoneMsg 是 RunTurn 完成后的异步消息。
@@ -62,6 +63,7 @@ type snapshotMsg struct {
 	npcs      []store.NPC
 	clues     []store.Clue
 	items     []store.Item
+	threats   []scenario.ThreatStatus
 	eventTail []store.Event
 	stage     string
 	err       error
@@ -110,6 +112,7 @@ type Model struct {
 	npcs     []store.NPC
 	clues    []store.Clue
 	items    []store.Item
+	threats  []scenario.ThreatStatus
 	events   []store.Event
 	stage    string
 
@@ -195,6 +198,12 @@ func (m Model) loadSnapshotCmd() tea.Cmd {
 		}
 		if items, err := repo.ListItems(ctx, sv.ID); err == nil {
 			msg.items = items
+		}
+		if m.scn != nil {
+			engine := scenario.New(m.scn, repo, nil)
+			if threats, err := engine.Threats(ctx, sv.ID); err == nil {
+				msg.threats = threats
+			}
 		}
 		msg.stage = sv.Stage
 		if events, err := repo.ListEvents(ctx, sv.ID, 0, 0); err == nil {
@@ -318,6 +327,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.npcs = msg.npcs
 		m.clues = msg.clues
 		m.items = msg.items
+		m.threats = msg.threats
 		m.events = msg.eventTail
 		m.stage = msg.stage
 		if actions := m.actionOptions(); len(actions) == 0 || m.actionIndex >= len(actions) {
@@ -343,10 +353,17 @@ func (m Model) handleSubmit(text string) (Model, tea.Cmd) {
 	if cmd, ok := parseSlash(text); ok {
 		return m.handleCommand(cmd)
 	}
-	m.log = append(m.log, logEntry{kind: EntryPlayer, text: text})
+	m.log = append(m.log, logEntry{kind: EntryPlayer, text: displaySubmittedText(text)})
 	m.busy = true
 	m.storyOffset = 0
 	return m, tea.Batch(m.runTurnCmd(text), m.spinner.Tick)
+}
+
+func displaySubmittedText(text string) string {
+	if action, ok := orchestrator.DecodePlayerAction(strings.TrimSpace(text)); ok {
+		return nonEmpty(action.Text, action.Raw)
+	}
+	return text
 }
 
 func actionDigit(msg tea.KeyMsg) (int, bool) {
@@ -366,7 +383,7 @@ func (m Model) fillAction(idx int) Model {
 		return m
 	}
 	m.actionIndex = idx
-	m.input.SetValue(actions[idx].input)
+	m.input.SetValue(actions[idx].displayInput())
 	m.input.CursorEnd()
 	m.resetCompletion()
 	return m
@@ -404,6 +421,69 @@ func (m Model) selectedActionLabel() string {
 		idx = 0
 	}
 	return actions[idx].label
+}
+
+func (m Model) selectedActionKindLabel() string {
+	actions := m.actionChoices()
+	if len(actions) == 0 {
+		return ""
+	}
+	idx := m.actionIndex
+	if idx < 0 || idx >= len(actions) {
+		idx = 0
+	}
+	return actionKindLabel(actions[idx].action.Kind)
+}
+
+func actionKindLabel(kind orchestrator.TurnIntent) string {
+	switch kind {
+	case orchestrator.IntentInvestigate:
+		return "调查"
+	case orchestrator.IntentTalk:
+		return "交谈"
+	case orchestrator.IntentMove:
+		return "移动"
+	case orchestrator.IntentUseItem:
+		return "使用"
+	case orchestrator.IntentConfront:
+		return "对峙"
+	case orchestrator.IntentReport:
+		return "结案"
+	default:
+		return "行动"
+	}
+}
+
+func (a suggestedAction) displayInput() string {
+	if strings.TrimSpace(a.action.Text) != "" {
+		return a.action.Text
+	}
+	if strings.TrimSpace(a.input) != "" {
+		if action, ok := orchestrator.DecodePlayerAction(a.input); ok {
+			return nonEmpty(action.Text, action.Raw)
+		}
+		return a.input
+	}
+	return a.label
+}
+
+func newSuggestedAction(kind orchestrator.TurnIntent, label, text string, source orchestrator.ActionSource, targets ...orchestrator.ActionTarget) suggestedAction {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = strings.TrimSpace(label)
+	}
+	action := orchestrator.PlayerAction{
+		Kind:    kind,
+		Raw:     text,
+		Text:    text,
+		Source:  source,
+		Targets: targets,
+	}
+	return suggestedAction{
+		label:  label,
+		input:  orchestrator.EncodePlayerAction(action),
+		action: action,
+	}
 }
 
 func (m Model) completeInput() Model {
@@ -546,6 +626,9 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	if res.Narrative != "" {
 		m.log = append(m.log, logEntry{kind: EntryGM, text: res.Narrative})
 	}
+	if !res.Summary.Empty() {
+		m.log = append(m.log, logEntry{kind: EntrySystem, text: formatTurnSummary(res.Summary)})
+	}
 	for range res.Fired {
 		m.log = append(m.log, logEntry{
 			kind: EntrySystem,
@@ -580,6 +663,38 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	m.storyOffset = 0
 }
 
+func formatTurnSummary(summary orchestrator.TurnSummary) string {
+	lines := []string{"回合摘要"}
+	if summary.LocationChange != nil {
+		lines = append(lines, fmt.Sprintf("- 位置：%s → %s", nonEmpty(summary.LocationChange.From, "?"), nonEmpty(summary.LocationChange.To, "?")))
+	}
+	if summary.TimeChange != nil {
+		lines = append(lines, fmt.Sprintf("- 时间：%s → %s", displayTimeOfDay(store.TimeOfDay(summary.TimeChange.From)), displayTimeOfDay(store.TimeOfDay(summary.TimeChange.To))))
+	}
+	if summary.StageChange != nil {
+		lines = append(lines, fmt.Sprintf("- 阶段：%s → %s", displayStage(summary.StageChange.From), displayStage(summary.StageChange.To)))
+	}
+	for _, clue := range summary.NewClues {
+		lines = append(lines, "- 新线索："+nonEmpty(clue.Description, clue.ID))
+	}
+	for _, npc := range summary.NPCChanges {
+		if npc.AliveChanged {
+			state := "存活"
+			if !npc.AliveTo {
+				state = "死亡"
+			}
+			lines = append(lines, fmt.Sprintf("- 人物：%s 状态变为%s", nonEmpty(npc.Name, npc.ID), state))
+		}
+		if npc.RelationFrom != npc.RelationTo {
+			lines = append(lines, fmt.Sprintf("- 关系：%s %+d → %+d", nonEmpty(npc.Name, npc.ID), npc.RelationFrom, npc.RelationTo))
+		}
+	}
+	for _, threat := range summary.ThreatChanges {
+		lines = append(lines, fmt.Sprintf("- 风险：%s %s → %s", threat.Name, threat.From, threat.To))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func formatCaseReport(report *scenario.CaseReport) string {
 	if report == nil {
 		return ""
@@ -609,6 +724,10 @@ func formatCaseReport(report *scenario.CaseReport) string {
 		lines = append(lines, "", "人物后果")
 		lines = append(lines, npcLines...)
 	}
+	if threatLines := reportThreatLines(report.Threats); len(threatLines) > 0 {
+		lines = append(lines, "", "风险结算")
+		lines = append(lines, threatLines...)
+	}
 	if report.TruthSummary != "" {
 		lines = append(lines, "", "本局真相", "  "+report.TruthSummary)
 	}
@@ -626,6 +745,17 @@ func reportNPCOutcomeLines(outcomes []scenario.NPCOutcome) []string {
 			state = "死亡"
 		}
 		lines = append(lines, fmt.Sprintf("  - %s：%s，关系 %+d", nonEmpty(outcome.Name, outcome.ID), state, outcome.Relation))
+	}
+	return lines
+}
+
+func reportThreatLines(threats []scenario.ThreatStatus) []string {
+	lines := []string{}
+	for _, threat := range threats {
+		if threat.Severity == 0 {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  - %s：%s", threat.Name, threat.StateLabel))
 	}
 	return lines
 }
@@ -741,6 +871,9 @@ func (m Model) primarySuggestion() string {
 		return "等待 GM 回应；可用 Ctrl+C 中断程序"
 	}
 	if action := m.selectedActionLabel(); action != "" {
+		if kind := m.selectedActionKindLabel(); kind != "" {
+			return kind + " · " + action
+		}
 		return action
 	}
 	for _, npc := range m.npcs {
@@ -784,10 +917,13 @@ func (m Model) actionOptions() []string {
 func (m Model) actionChoices() []suggestedAction {
 	actions := []suggestedAction{}
 	if loc, ok := m.scenarioLocation(); ok {
-		for _, lead := range loc.Leads {
+		for i, lead := range loc.Leads {
 			lead = strings.TrimSpace(lead)
 			if lead != "" {
-				actions = append(actions, suggestedAction{label: lead, input: lead})
+				actions = append(actions, newSuggestedAction(orchestrator.IntentInvestigate, lead, lead,
+					orchestrator.ActionSource{Kind: "lead", ID: fmt.Sprintf("%s:%d", loc.ID, i)},
+					orchestrator.ActionTarget{Kind: "location", ID: loc.ID, Name: loc.Name},
+				))
 			}
 		}
 	}
@@ -798,7 +934,10 @@ func (m Model) actionChoices() []suggestedAction {
 	actions = append(actions, m.dialogueActions()...)
 	if len(actions) == 0 && m.location.Name != "" {
 		text := "观察" + m.location.Name + "，寻找异常痕迹或可调查的物件"
-		actions = append(actions, suggestedAction{label: text, input: text})
+		actions = append(actions, newSuggestedAction(orchestrator.IntentInvestigate, text, text,
+			orchestrator.ActionSource{Kind: "fallback", ID: m.location.ID},
+			orchestrator.ActionTarget{Kind: "location", ID: m.location.ID, Name: m.location.Name},
+		))
 	}
 	if len(actions) == 0 {
 		return nil
@@ -825,7 +964,10 @@ func (m Model) dialogueActions() []suggestedAction {
 			prompt := strings.TrimSpace(opt.Prompt)
 			if prompt != "" {
 				label := fmt.Sprintf("询问%s：%s", nonEmpty(snpc.Name, npc.Name), opt.Label)
-				out = append(out, suggestedAction{label: label, input: prompt})
+				out = append(out, newSuggestedAction(orchestrator.IntentTalk, label, prompt,
+					orchestrator.ActionSource{Kind: "dialogue_option", ID: opt.ID},
+					orchestrator.ActionTarget{Kind: "npc", ID: npc.ID, Name: nonEmpty(snpc.Name, npc.Name)},
+				))
 			}
 		}
 	}
@@ -846,7 +988,10 @@ func (m Model) itemActions() []suggestedAction {
 		}
 		for _, action := range scenario.ItemActionsFor(sitem, state, stage, m.location.ID, found) {
 			label := fmt.Sprintf("使用%s：%s", nonEmpty(sitem.Name, state.Name), action.Label)
-			out = append(out, suggestedAction{label: label, input: strings.TrimSpace(action.Prompt)})
+			out = append(out, newSuggestedAction(orchestrator.IntentUseItem, label, action.Prompt,
+				orchestrator.ActionSource{Kind: "item_action", ID: action.ID},
+				orchestrator.ActionTarget{Kind: "item", ID: state.ID, Name: nonEmpty(sitem.Name, state.Name)},
+			))
 		}
 	}
 	return out
@@ -1043,6 +1188,12 @@ func (m Model) scenePanelLines() []string {
 	if alert := m.latestErrorSummary(); alert != "" {
 		lines = append(lines, "", errorStyle.Render("注意"), "  "+alert)
 	}
+	if len(m.threats) > 0 {
+		lines = append(lines, "", labelStyle.Render("风险"))
+		for _, threat := range m.threats {
+			lines = append(lines, fmt.Sprintf("  %s：%s", threat.Name, threat.StateLabel))
+		}
+	}
 	if objective := m.currentObjective(); objective.Title != "" {
 		lines = append(lines, "", labelStyle.Render("当前目标"), "  "+objective.Title)
 		for i, step := range objective.Steps {
@@ -1052,14 +1203,14 @@ func (m Model) scenePanelLines() []string {
 			lines = append(lines, "  - "+step)
 		}
 	}
-	if actions := m.actionOptions(); len(actions) > 0 {
+	if choices := m.actionChoices(); len(choices) > 0 {
 		lines = append(lines, "", labelStyle.Render("可选行动"))
-		for i, action := range actions {
+		for i, action := range choices {
 			prefix := fmt.Sprintf("  %d. ", i+1)
-			if i == m.actionIndex%len(actions) {
+			if i == m.actionIndex%len(choices) {
 				prefix = accentStyle.Render("› " + fmt.Sprintf("%d. ", i+1))
 			}
-			lines = append(lines, prefix+action)
+			lines = append(lines, prefix+actionKindLabel(action.action.Kind)+" · "+action.label)
 		}
 	}
 

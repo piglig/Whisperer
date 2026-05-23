@@ -9,17 +9,18 @@ import (
 )
 
 type CaseReport struct {
-	Ending          Ending       `json:"ending"`
-	VariantID       string       `json:"variant_id,omitempty"`
-	Stage           string       `json:"stage"`
-	CulpritID       string       `json:"culprit_id,omitempty"`
-	CulpritName     string       `json:"culprit_name,omitempty"`
-	FoundKeyClues   []ReportClue `json:"found_key_clues,omitempty"`
-	MissingKeyClues []ReportClue `json:"missing_key_clues,omitempty"`
-	FoundClues      []ReportClue `json:"found_clues,omitempty"`
-	NPCOutcomes     []NPCOutcome `json:"npc_outcomes,omitempty"`
-	TruthSummary    string       `json:"truth_summary,omitempty"`
-	EvidenceStatus  string       `json:"evidence_status"`
+	Ending          Ending         `json:"ending"`
+	VariantID       string         `json:"variant_id,omitempty"`
+	Stage           string         `json:"stage"`
+	CulpritID       string         `json:"culprit_id,omitempty"`
+	CulpritName     string         `json:"culprit_name,omitempty"`
+	FoundKeyClues   []ReportClue   `json:"found_key_clues,omitempty"`
+	MissingKeyClues []ReportClue   `json:"missing_key_clues,omitempty"`
+	FoundClues      []ReportClue   `json:"found_clues,omitempty"`
+	NPCOutcomes     []NPCOutcome   `json:"npc_outcomes,omitempty"`
+	Threats         []ThreatStatus `json:"threats,omitempty"`
+	TruthSummary    string         `json:"truth_summary,omitempty"`
+	EvidenceStatus  string         `json:"evidence_status"`
 }
 
 type ReportClue struct {
@@ -42,6 +43,7 @@ type CaseReportInput struct {
 	VariantID  string
 	FoundClues []store.Clue
 	NPCs       []store.NPC
+	Threats    []ThreatStatus
 	TruthLimit int
 }
 
@@ -59,6 +61,7 @@ func BuildCaseReport(s *Scenario, in CaseReportInput) *CaseReport {
 		Stage:        NormalizeStage(s, in.Save.Stage),
 		CulpritID:    s.Culprit,
 		CulpritName:  npcName(s, s.Culprit),
+		Threats:      append([]ThreatStatus(nil), in.Threats...),
 		TruthSummary: truthSummary(s.Truth, in.TruthLimit),
 	}
 	if report.Stage == "" {

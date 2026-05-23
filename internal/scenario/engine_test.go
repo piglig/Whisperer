@@ -94,6 +94,7 @@ func TestEngine_Evaluate_TimeAndRelationActions(t *testing.T) {
 
 	// 切到 night 让 pub_after_dark 命中
 	require.NoError(t, r.SetTimeOfDay(ctx, saveID, store.TimeNight))
+	require.NoError(t, r.UpdateSaveProgress(ctx, saveID, "pub", 1))
 	require.NoError(t, r.MarkLocationVisited(ctx, "pub"))
 
 	fired, err := e.Evaluate(ctx, saveID)
@@ -224,4 +225,29 @@ triggers:
 
 	sv, _ := r.GetSave(ctx, saveID)
 	assert.Equal(t, store.TimeNight, sv.TimeOfDay) // morning + 2 = night
+}
+
+func TestEngine_Threats(t *testing.T) {
+	e, s, saveID, ctx := newEngineEnv(t)
+	require.NoError(t, e.Apply(ctx, saveID))
+	r := s.Repo()
+
+	statuses, err := e.Threats(ctx, saveID)
+	require.NoError(t, err)
+	require.NotEmpty(t, statuses)
+	assert.Equal(t, "安娜危险", statuses[0].Name)
+	assert.Equal(t, "尚未卷入", statuses[0].StateLabel)
+
+	require.NoError(t, r.MarkClueFound(ctx, "anna_warning", "pub", 1))
+	statuses, err = e.Threats(ctx, saveID)
+	require.NoError(t, err)
+	found := false
+	for _, status := range statuses {
+		if status.ID == "anna_danger" {
+			found = true
+			assert.Equal(t, "被盯上", status.StateLabel)
+			assert.Equal(t, 1, status.Severity)
+		}
+	}
+	assert.True(t, found)
 }

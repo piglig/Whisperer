@@ -28,6 +28,9 @@ type TurnResult struct {
 	Drift     scenario.DriftStatus    `json:"drift"`
 	Ending    *scenario.Ending        `json:"ending,omitempty"`
 	Report    *scenario.CaseReport    `json:"report,omitempty"`
+	Decision  TurnDecision            `json:"decision"`
+	Action    PlayerAction            `json:"action"`
+	Summary   TurnSummary             `json:"summary,omitempty"`
 	SLAReport sla.Report              `json:"sla_report"`
 	Save      store.Save              `json:"save"`
 }
@@ -45,13 +48,6 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		attribute.String("variant_id", o.cfg.VariantID),
 	)
 
-	systemPrompt, err := o.renderSystemPrompt(ctx)
-	if err != nil {
-		span.SetStatus(codes.Error, "render system prompt")
-		span.RecordError(err)
-		return TurnResult{}, err
-	}
-
 	preSave, err := o.cfg.Store.Repo().GetSave(ctx, o.cfg.SaveID)
 	if err != nil {
 		span.SetStatus(codes.Error, "get save")
@@ -60,6 +56,34 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 	}
 	turnNumber := preSave.TurnCount + 1
 	span.SetAttributes(attribute.Int("turn", turnNumber))
+	preSnapshot, err := captureTurnSnapshot(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario)
+	if err != nil {
+		span.SetStatus(codes.Error, "capture pre-turn snapshot")
+		span.RecordError(err)
+		return TurnResult{}, fmt.Errorf("pre-turn snapshot: %w", err)
+	}
+	playerAction := parsePlayerAction(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario, userInput)
+	span.SetAttributes(attribute.String("turn.intent", string(playerAction.Kind)))
+	guard := guardPlayerAction(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario, playerAction)
+	if !guard.Allowed {
+		decision := buildGuardDecision(playerAction, guard)
+		return TurnResult{
+			Narrative: guardNarrative(guard),
+			Decision:  decision,
+			Action:    guard.NormalizedAction,
+			SLAReport: sla.Report{Passed: true},
+			Save:      preSave,
+		}, nil
+	}
+	playerAction = guard.NormalizedAction
+	gmInput := buildGMUserInput(playerAction, guard)
+
+	systemPrompt, err := o.renderSystemPrompt(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "render system prompt")
+		span.RecordError(err)
+		return TurnResult{}, err
+	}
 
 	var (
 		trace      agent.TurnTrace
@@ -69,6 +93,8 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		drift      scenario.DriftStatus
 		ending     *scenario.Ending
 		caseReport *scenario.CaseReport
+		decision   TurnDecision
+		summary    TurnSummary
 		finalSave  store.Save
 	)
 
@@ -76,7 +102,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
-	attemptInput := userInput
+	attemptInput := gmInput
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		isLastAttempt := attempt == maxAttempts
@@ -125,7 +151,7 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 				report = validator.Check(trace)
 			}
 			if !report.Passed && !isLastAttempt {
-				attemptInput = userInput + "\n\n" + buildSLAFeedback(report)
+				attemptInput = gmInput + "\n\n" + buildSLAFeedback(report)
 				return errSLAAttemptFailed
 			}
 
@@ -196,6 +222,12 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 					return fmt.Errorf("case report: %w", err)
 				}
 			}
+			postSnapshot, err := captureTurnSnapshot(ctx, repo, o.cfg.SaveID, o.cfg.Scenario)
+			if err != nil {
+				return fmt.Errorf("post-turn snapshot: %w", err)
+			}
+			summary = buildTurnSummary(preSnapshot, postSnapshot, firedList)
+			decision = buildTurnDecision(playerAction, trace, summary, report)
 			return nil
 		})
 		if txErr == nil {
@@ -227,6 +259,9 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		Drift:     drift,
 		Ending:    ending,
 		Report:    caseReport,
+		Decision:  decision,
+		Action:    playerAction,
+		Summary:   summary,
 		SLAReport: report,
 		Save:      finalSave,
 	}

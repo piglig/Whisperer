@@ -301,6 +301,8 @@ func evalCondition(c Condition, v stateView) (bool, error) {
 		return !ok, nil
 	case c.LocationVisited != "":
 		return v.VisitedLocs[c.LocationVisited], nil
+	case c.CurrentLocation != "":
+		return v.Save.CurrentLocationID == c.CurrentLocation, nil
 	case c.ClueFound != "":
 		return v.FoundClues[c.ClueFound], nil
 	case c.NPCDead != "":

@@ -142,6 +142,20 @@ func cloneScenario(s *Scenario) *Scenario {
 		return nil
 	}
 	out := *s
+	out.Objectives = make([]Objective, len(s.Objectives))
+	for i, obj := range s.Objectives {
+		out.Objectives[i] = obj
+		out.Objectives[i].Steps = append([]string(nil), obj.Steps...)
+	}
+	out.Threats = make([]Threat, len(s.Threats))
+	for i, threat := range s.Threats {
+		out.Threats[i] = threat
+		out.Threats[i].States = make([]ThreatState, len(threat.States))
+		for j, state := range threat.States {
+			out.Threats[i].States[j] = state
+			out.Threats[i].States[j].When = cloneCondition(state.When)
+		}
+	}
 	out.Locations = append([]SLocation(nil), s.Locations...)
 	for i, l := range s.Locations {
 		out.Locations[i].Leads = append([]string(nil), l.Leads...)

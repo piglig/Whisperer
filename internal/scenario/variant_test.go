@@ -126,7 +126,7 @@ func TestMergeVariant_TriggerOverride(t *testing.T) {
 				if sub.ClueFound == "rourke_bribe" {
 					gotClue = true
 				}
-				if sub.LocationVisited == "station" {
+				if sub.CurrentLocation == "station" {
 					gotLoc = true
 				}
 			}

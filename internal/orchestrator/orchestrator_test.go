@@ -38,6 +38,8 @@ func TestRenderSystemPrompt_RichSnapshot(t *testing.T) {
 	assert.Contains(t, s, "雾港码头")
 	assert.Contains(t, s, "玩家引导素材")
 	assert.Contains(t, s, "查看公告栏")
+	assert.Contains(t, s, "当前风险状态")
+	assert.Contains(t, s, "安娜危险")
 	assert.Contains(t, s, "事件 F", "应包含最近事件")
 	assert.NotContains(t, s, "事件 A", "最早事件应被截断")
 }

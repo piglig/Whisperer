@@ -110,7 +110,8 @@ func TestEngine_CheckEndings_TriggerFiredCondition(t *testing.T) {
 	require.NoError(t, r.MarkClueFound(ctx, "ledger", "pub", 1))
 	require.NoError(t, r.MarkClueFound(ctx, "reef_carvings", "reef_cave", 1))
 	require.NoError(t, r.MarkClueFound(ctx, "sacrifice_chamber", "reef_cave", 1))
-	// vance_confronted 触发条件：找到 reef_carvings + 探访 pub
+	// culprit_confronted 触发条件：找到 reef_carvings + 当前回到 pub
+	require.NoError(t, r.UpdateSaveProgress(ctx, saveID, "pub", 1))
 	require.NoError(t, r.MarkLocationVisited(ctx, "pub"))
 	_, err := e.Evaluate(ctx, saveID) // 触发 vance_confronted
 	require.NoError(t, err)

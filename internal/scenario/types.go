@@ -18,6 +18,7 @@ type Scenario struct {
 	Version    string      `yaml:"version" json:"version"`
 	Intro      string      `yaml:"intro,omitempty" json:"intro,omitempty"`
 	Objectives []Objective `yaml:"objectives,omitempty" json:"objectives,omitempty" validate:"dive"`
+	Threats    []Threat    `yaml:"threats,omitempty" json:"threats,omitempty" validate:"dive"`
 	Culprit    string      `yaml:"culprit,omitempty" json:"culprit,omitempty"`
 	Truth      string      `yaml:"truth,omitempty" json:"truth,omitempty"`
 	Locations  []SLocation `yaml:"locations" json:"locations" validate:"required,min=1,dive"`
@@ -44,6 +45,21 @@ type Objective struct {
 	Stage string   `yaml:"stage" json:"stage" validate:"required"`
 	Title string   `yaml:"title" json:"title" validate:"required"`
 	Steps []string `yaml:"steps,omitempty" json:"steps,omitempty"`
+}
+
+type Threat struct {
+	ID          string        `yaml:"id" json:"id" validate:"required"`
+	Name        string        `yaml:"name" json:"name" validate:"required"`
+	Description string        `yaml:"description,omitempty" json:"description,omitempty"`
+	States      []ThreatState `yaml:"states" json:"states" validate:"required,min=1,dive"`
+}
+
+type ThreatState struct {
+	ID          string    `yaml:"id" json:"id" validate:"required"`
+	Label       string    `yaml:"label" json:"label" validate:"required"`
+	Severity    int       `yaml:"severity,omitempty" json:"severity,omitempty" validate:"gte=0,lte=4"`
+	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
+	When        Condition `yaml:"when,omitempty" json:"when,omitempty"`
 }
 
 type SNPC struct {
@@ -172,6 +188,7 @@ type Condition struct {
 	Not *Condition  `yaml:"not,omitempty" json:"not,omitempty"`
 
 	LocationVisited string  `yaml:"location_visited,omitempty" json:"location_visited,omitempty"`
+	CurrentLocation string  `yaml:"current_location,omitempty" json:"current_location,omitempty"`
 	ClueFound       string  `yaml:"clue_found,omitempty" json:"clue_found,omitempty"`
 	NPCDead         string  `yaml:"npc_dead,omitempty" json:"npc_dead,omitempty"`
 	NPCRelationLT   *RelChk `yaml:"npc_relation_lt,omitempty" json:"npc_relation_lt,omitempty"`

@@ -29,6 +29,8 @@ type PromptContext struct {
 	ClueAtlas string
 	// PlayerGuidance 是玩家可见的目标、地点行动提示与 NPC 初见素材。
 	PlayerGuidance string
+	// ThreatStatus 是当前局势风险轨状态，玩家可见，用于自然提醒倒计时和危险。
+	ThreatStatus string
 	// PlayerPrior 是跨周目 meta 渲染——玩家"已活过几次"、看过哪些 variant。GM 可用于"似曾相识"暗示。
 	PlayerPrior string
 }
