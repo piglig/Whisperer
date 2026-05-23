@@ -7,15 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-
 	"github.com/zhuzhenwu/whisperer/internal/agent"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator/sla"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator/tools"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
-	"github.com/zhuzhenwu/whisperer/internal/telemetry"
 )
 
 var errSLAAttemptFailed = errors.New("sla attempt failed")
@@ -40,30 +36,16 @@ type TurnResult struct {
 // 出错语义：返回 error 时 Tx 已 rollback，调用方应把错误显示给玩家但不要修改
 // 进程内 history（保持一致性）。
 func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResult, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "whisperer.turn")
-	defer span.End()
-
-	span.SetAttributes(
-		attribute.String("save_id", o.cfg.SaveID),
-		attribute.String("variant_id", o.cfg.VariantID),
-	)
-
 	preSave, err := o.cfg.Store.Repo().GetSave(ctx, o.cfg.SaveID)
 	if err != nil {
-		span.SetStatus(codes.Error, "get save")
-		span.RecordError(err)
 		return TurnResult{}, fmt.Errorf("get save: %w", err)
 	}
 	turnNumber := preSave.TurnCount + 1
-	span.SetAttributes(attribute.Int("turn", turnNumber))
 	preSnapshot, err := captureTurnSnapshot(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario)
 	if err != nil {
-		span.SetStatus(codes.Error, "capture pre-turn snapshot")
-		span.RecordError(err)
 		return TurnResult{}, fmt.Errorf("pre-turn snapshot: %w", err)
 	}
 	playerAction := parsePlayerAction(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario, userInput)
-	span.SetAttributes(attribute.String("turn.intent", string(playerAction.Kind)))
 	guard := guardPlayerAction(ctx, o.cfg.Store.Repo(), o.cfg.SaveID, o.cfg.Scenario, playerAction)
 	if !guard.Allowed {
 		decision := buildGuardDecision(playerAction, guard)
@@ -80,8 +62,6 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 
 	systemPrompt, err := o.renderSystemPrompt(ctx)
 	if err != nil {
-		span.SetStatus(codes.Error, "render system prompt")
-		span.RecordError(err)
 		return TurnResult{}, err
 	}
 
@@ -236,8 +216,6 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		if errors.Is(txErr, errSLAAttemptFailed) {
 			continue
 		}
-		span.SetStatus(codes.Error, "turn tx failed")
-		span.RecordError(txErr)
 		return TurnResult{}, txErr
 	}
 
@@ -264,23 +242,6 @@ func (o *Orchestrator) RunTurn(ctx context.Context, userInput string) (TurnResul
 		Summary:   summary,
 		SLAReport: report,
 		Save:      finalSave,
-	}
-
-	span.SetAttributes(
-		attribute.Int("trace.iterations", trace.Iterations),
-		attribute.Int64("trace.input_tokens", trace.InputTokens),
-		attribute.Int64("trace.output_tokens", trace.OutputTokens),
-		attribute.Float64("trace.cost_usd", trace.TotalCostUSD),
-		attribute.Int("trace.tool_calls", len(trace.ToolCalls)),
-		attribute.Int("scenario.fired_triggers", len(firedList)),
-		attribute.String("scenario.drift", drift.String()),
-		attribute.Bool("sla.passed", report.Passed),
-	)
-	if ending != nil {
-		span.SetAttributes(
-			attribute.String("scenario.ending_id", ending.ID),
-			attribute.String("scenario.ending_kind", ending.Kind),
-		)
 	}
 
 	// 写 JSONL trace（disabled 时是 no-op）。失败不影响本回合返回值——观察层

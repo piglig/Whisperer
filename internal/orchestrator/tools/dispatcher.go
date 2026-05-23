@@ -17,13 +17,7 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 )
-
-// tracerName 与 telemetry / agent 包对齐，让所有 whisperer span 落在同一 scope。
-const tracerName = "github.com/zhuzhenwu/whisperer"
 
 // Dispatcher 把 tool 名字派发到具体 handler。一个 Dispatcher 绑定到单个 save 的
 // 单回合执行；保存 saveID、当前 turn、rng。
@@ -87,21 +81,11 @@ func (d *Dispatcher) Tools() []agent.ToolDefinition {
 //
 // 任何 tool 错误都通过返回 (errStruct, true) 表达，永不返回 Go error。
 func (d *Dispatcher) Dispatch(ctx context.Context, name string, inputRaw json.RawMessage) (any, bool) {
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "whisperer.tool.dispatch")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("tool.name", name),
-		attribute.Int("tool.input_bytes", len(inputRaw)),
-	)
-
 	h, ok := registry[name]
 	if !ok {
-		span.SetAttributes(attribute.Bool("tool.unknown", true), attribute.Bool("tool.is_error", true))
 		return errPayload(fmt.Sprintf("unknown tool: %s", name)), true
 	}
-	out, isErr := h(ctx, d, inputRaw)
-	span.SetAttributes(attribute.Bool("tool.is_error", isErr))
-	return out, isErr
+	return h(ctx, d, inputRaw)
 }
 
 // handler 是单个 tool 的内部签名。

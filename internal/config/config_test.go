@@ -40,10 +40,6 @@ log_format = "json"
 log_level = "debug"
 llm_max_retries = 5
 llm_timeout = "90s"
-
-[embedder]
-provider = "openai"
-model = "text-embedding-3-large"
 `), 0o644))
 
 	cfg, err := Load(path)
@@ -53,8 +49,6 @@ model = "text-embedding-3-large"
 	assert.Equal(t, int64(42), cfg.Seed)
 	assert.Equal(t, 5, cfg.LLMMaxRetries)
 	assert.Equal(t, 90*time.Second, cfg.LLMTimeout)
-	assert.Equal(t, "openai", cfg.Embedder.Provider)
-	assert.Equal(t, "text-embedding-3-large", cfg.Embedder.Model)
 }
 
 func TestLoad_RejectsBadDuration(t *testing.T) {

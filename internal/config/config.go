@@ -52,16 +52,6 @@ type Config struct {
 	LLMTimeout    time.Duration `toml:"-"`
 	LLMTimeoutStr string        `toml:"llm_timeout"`     // "120s"，由 Load 解析到 LLMTimeout
 	LLMRetriesRaw *int          `toml:"llm_max_retries"` // 用指针区分"未设"与"显式 0"
-
-	// Embedder section
-	Embedder EmbedderSection `toml:"embedder"`
-}
-
-// EmbedderSection 是 [embedder] table。APIKey 不接受 TOML 输入，只读 env。
-type EmbedderSection struct {
-	Provider string `toml:"provider"`
-	Model    string `toml:"model"`
-	BaseURL  string `toml:"base_url"`
 }
 
 // Defaults 返回内置默认值。它们也会作为 koanf 的第一层 provider 参与合并。
@@ -77,9 +67,6 @@ func Defaults() Config {
 		LLMTimeout:    120 * time.Second,
 		TraceDir:      "runs",
 		LLMTimeoutStr: "120s",
-		Embedder: EmbedderSection{
-			Provider: "fake",
-		},
 	}
 }
 
@@ -150,10 +137,9 @@ func defaultMap() map[string]interface{} {
 		"meta_path":         d.MetaPath,
 		"log_format":        d.LogFormat,
 		"log_level":         d.LogLevel,
-		"llm_timeout":       d.LLMTimeoutStr,
-		"llm_max_retries":   3,
-		"trace_dir":         d.TraceDir,
-		"embedder.provider": d.Embedder.Provider,
+		"llm_timeout":     d.LLMTimeoutStr,
+		"llm_max_retries": 3,
+		"trace_dir":       d.TraceDir,
 	}
 }
 
@@ -189,12 +175,6 @@ func envKey(key, value string) (string, interface{}) {
 		return "llm_timeout", value
 	case "LLM_MAX_RETRIES":
 		return "llm_max_retries", value
-	case "EMBEDDER":
-		return "embedder.provider", value
-	case "EMBEDDER_MODEL":
-		return "embedder.model", value
-	case "EMBEDDER_BASE_URL":
-		return "embedder.base_url", value
 	default:
 		return "", nil
 	}

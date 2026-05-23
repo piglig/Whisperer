@@ -381,7 +381,7 @@ func writeWizardConfig(path string, r wizardResult) error {
 	// log defaults
 	b.WriteString("log_format = \"text\"\n")
 	b.WriteString("log_level  = \"info\"\n")
-	b.WriteString("# See docs/example-config.toml for model / embedder / timeout knobs.\n")
+	b.WriteString("# See docs/example-config.toml for model / timeout knobs.\n")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("write tmp: %w", err)

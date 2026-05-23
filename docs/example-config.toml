@@ -12,8 +12,8 @@
 # !!  API key 不写在这里。  !!
 # 出于安全考虑，本文件不接受 api_key 字段。请用环境变量：
 #   ANTHROPIC_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY /
-#   XAI_API_KEY / GEMINI_API_KEY / EMBEDDER_API_KEY
-# 或者 CLI flag `--api-key` / `--embedder-key`。
+#   XAI_API_KEY / GEMINI_API_KEY
+# 或者 CLI flag `--api-key`。
 # 这样 config 文件可以放心提交到 dotfiles 仓库。
 
 # ---- LLM provider ----
@@ -44,8 +44,5 @@ log_level  = "info"                                     # debug | info | warn | 
 llm_max_retries = 3                                     # 0 走 SDK 默认
 llm_timeout     = "120s"                                # Go duration 字符串
 
-# ---- Embedder（NPC / 事件向量记忆） ----
-[embedder]
-provider = "fake"                                       # fake | openai | openai-compat | cohere | ollama | localai
-# model    = "text-embedding-3-small"                  # provider 相关；fake 不需要
-# base_url = "http://localhost:11434/api"              # ollama / openai-compat 必填
+# Embedder：当前内置 fake（sha256 桶 + L2 归一化，无外部依赖），单剧本 9 NPC × 3
+# 集合的规模下质量足够；接入真实 embedding API 等剧本扩到 5+ 再说。

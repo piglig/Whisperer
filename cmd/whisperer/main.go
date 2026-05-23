@@ -46,8 +46,8 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
-	"github.com/zhuzhenwu/whisperer/internal/telemetry"
 	"github.com/zhuzhenwu/whisperer/internal/tui"
+	"github.com/zhuzhenwu/whisperer/internal/tui/saveselect"
 )
 
 // globalTranslator 在 main 解析完 --lang 后注入；fail() 取它做 i18n 渲染。
@@ -116,14 +116,9 @@ func main() {
 	metaPath := flag.String("meta", fileCfg.MetaPath, "cross-run meta file path; '-' to disable")
 	logFormat := flag.String("log-format", fileCfg.LogFormat, "log handler format: text | json")
 	logLevel := flag.String("log-level", fileCfg.LogLevel, "log level: debug | info | warn | error")
-	embedderProvider := flag.String("embedder", fileCfg.Embedder.Provider, "embedder provider: fake | openai | openai-compat | cohere | ollama | localai")
-	embedderModel := flag.String("embedder-model", fileCfg.Embedder.Model, "embedder model id (provider-specific; defaults supplied for openai/cohere)")
-	embedderKey := flag.String("embedder-key", "", "embedder API key (overrides EMBEDDER_API_KEY)")
-	embedderBaseURL := flag.String("embedder-base-url", fileCfg.Embedder.BaseURL, "embedder base URL (required for openai-compat; optional for ollama)")
 	llmMaxRetries := flag.Int("llm-max-retries", fileCfg.LLMMaxRetries, "max retries on transient LLM failures (0 = SDK default)")
 	llmTimeout := flag.Duration("llm-timeout", fileCfg.LLMTimeout, "per-LLM-call hard timeout (0 = no timeout)")
 	traceDir := flag.String("trace-dir", fileCfg.TraceDir, "directory to append per-turn JSONL traces; '-' to disable")
-	otelExporter := flag.String("otel", "noop", "OpenTelemetry exporter: noop | stdout | otlp (OTLP endpoint via OTEL_EXPORTER_OTLP_ENDPOINT)")
 	lang := flag.String("lang", fileCfg.Lang, "UI language tag (zh-CN | en | auto); empty/auto = detect from $LANG / $LC_ALL")
 	flag.Parse()
 
@@ -153,19 +148,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	otelShutdown, err := telemetry.Init(context.Background(), telemetry.Config{
-		Exporter:       *otelExporter,
-		ServiceVersion: "0.4.0",
-	})
-	if err != nil {
-		fail("init telemetry", err)
-	}
-	defer func() {
-		if shErr := otelShutdown(context.Background()); shErr != nil {
-			slog.Warn("telemetry shutdown", "err", shErr)
-		}
-	}()
-
 	ctx := context.Background()
 
 	st, err := store.Open(ctx, *dbPath)
@@ -174,22 +156,21 @@ func main() {
 	}
 	defer st.Close()
 
-	embedderKeyResolved := *embedderKey
-	if embedderKeyResolved == "" {
-		embedderKeyResolved = os.Getenv("EMBEDDER_API_KEY")
-	}
-	embedder, err := memory.NewEmbedder(memory.EmbedderConfig{
-		Provider: *embedderProvider,
-		APIKey:   embedderKeyResolved,
-		Model:    *embedderModel,
-		BaseURL:  *embedderBaseURL,
-	})
-	if err != nil {
-		fail("build embedder", err)
-	}
 	baseScn, err := scenario.LoadBundled(*scenarioID)
 	if err != nil {
 		fail("load scenario", err)
+	}
+
+	// 若 --save 为空且数据库里有存档，先弹存档选择器。
+	if *saveID == "" {
+		chosen, quit, err := runSaveSelector(ctx, st, *memDir)
+		if err != nil {
+			fail("save selector", err)
+		}
+		if quit {
+			return
+		}
+		*saveID = chosen // 为空表示玩家选择了"新建"
 	}
 
 	// 跨周目 meta 加载（首次游玩或文件缺失返回空状态）。
@@ -214,15 +195,12 @@ func main() {
 	_ = chosenVariant
 
 	saveMemDir := memoryDirForSave(*memDir, currentSaveID)
-	mem, err := memory.New(saveMemDir, embedder)
+	mem, err := memory.New(saveMemDir, memory.NewFakeEmbedder(0))
 	if err != nil {
 		fail("open memory", err)
 	}
 	defer mem.Close()
-	slog.Info("memory initialized",
-		"dir", saveMemDir,
-		"embedder", *embedderProvider,
-		"embedder_model", *embedderModel)
+	slog.Info("memory initialized", "dir", saveMemDir)
 
 	if needsScenarioApply {
 		engine := scenario.New(scn, st.Repo(), mem)
@@ -346,6 +324,47 @@ func memoryDirForSave(baseDir, saveID string) string {
 		return ""
 	}
 	return filepath.Join(baseDir, saveID)
+}
+
+// runSaveSelector 在已有存档存在时弹出 TUI 选择器。
+// 返回 (chosenSaveID, quit, err)：
+//   - quit=true 表示玩家主动退出，主程序应直接返回
+//   - chosenSaveID 空字符串表示玩家选择"新建"，主程序走默认 ensureSaveWithVariant
+//   - 数据库里完全没有存档时跳过选择器，直接落到新建流程
+func runSaveSelector(ctx context.Context, st *store.Store, memDir string) (string, bool, error) {
+	repo := st.Repo()
+	saves, err := repo.ListSaves(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("list saves: %w", err)
+	}
+	if len(saves) == 0 {
+		return "", false, nil
+	}
+
+	onDelete := func(id string) error {
+		dir := memoryDirForSave(memDir, id)
+		if dir == "" {
+			return nil
+		}
+		return os.RemoveAll(dir)
+	}
+
+	model := saveselect.New(saves, repo, onDelete)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+	finalModel, err := prog.Run()
+	if err != nil {
+		return "", false, err
+	}
+	res := finalModel.(saveselect.Model).Result()
+	switch res.Action {
+	case saveselect.ActionQuit:
+		return "", true, nil
+	case saveselect.ActionLoad:
+		return res.SaveID, false, nil
+	case saveselect.ActionNew:
+		return "", false, nil
+	}
+	return "", false, nil
 }
 
 // runInitSubcommand 处理 `whisperer init` ——重新跑向导，把结果写到 configPath。
