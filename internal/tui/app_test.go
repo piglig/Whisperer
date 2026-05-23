@@ -159,6 +159,8 @@ func TestModel_OpeningRendered(t *testing.T) {
 	assert.Contains(t, v, "案件卡")
 	assert.Contains(t, v, "阶段 开局")
 	assert.Contains(t, v, "当前目标")
+	assert.Contains(t, v, "当前重点")
+	assert.Contains(t, v, "确认露西失踪的第一现场")
 	assert.Contains(t, v, "查看码头公告栏")
 }
 
@@ -325,6 +327,32 @@ func TestFormatTurnSummary(t *testing.T) {
 	assert.Contains(t, out, "账册")
 	assert.Contains(t, out, "玛丽莎")
 	assert.Contains(t, out, "安娜危险")
+}
+
+func TestFormatTurnRuling(t *testing.T) {
+	out := formatTurnRuling(orchestrator.TurnDecision{
+		Mechanics: []orchestrator.DecisionAction{
+			{
+				Tool:    "roll_skill",
+				Success: true,
+				Detail:  `{"skill_name":"Spot Hidden","skill_value":60,"difficulty":"regular","roll":47,"threshold":60,"success":true,"degree":"regular_success"}`,
+			},
+			{
+				Tool:    "sanity_check",
+				Success: true,
+				Detail:  `{"roll":72,"threshold":60,"success":false,"loss":2,"new_san":58,"triggered_indefinite_insanity":false}`,
+			},
+		},
+		Checks: []orchestrator.DecisionCheck{
+			{Code: "rules_applied", Passed: true},
+			{Code: "roll_missing", Passed: false, Message: "叙事提到检定但没有掷骰"},
+		},
+	})
+
+	assert.Contains(t, out, "裁定记录")
+	assert.Contains(t, out, "Spot Hidden：60 → 47，成功")
+	assert.Contains(t, out, "SAN：60 → 72，失败，损失 2，当前 SAN 58")
+	assert.Contains(t, out, "系统拦截：叙事提到检定但没有掷骰")
 }
 
 func TestModel_QuitOnCtrlC(t *testing.T) {

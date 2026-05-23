@@ -15,6 +15,7 @@ var migrationsFS embed.FS
 // migrate 应用所有未应用的迁移。
 func migrate(ctx context.Context, db *sql.DB) error {
 	goose.SetBaseFS(migrationsFS)
+	goose.SetLogger(goose.NopLogger())
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("goose set dialect: %w", err)
 	}

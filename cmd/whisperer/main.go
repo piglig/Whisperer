@@ -19,7 +19,7 @@
 //	export GEMINI_API_KEY=...
 //	whisperer --provider gemini
 //
-// 缺省加载内置 fog_harbor 剧本，自动创建 save 与一名占位调查员。
+// 缺省加载内置 fog_harbor 剧本，自动创建 save 与一名快速模板调查员。
 package main
 
 import (
@@ -40,6 +40,7 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/clierror"
 	"github.com/zhuzhenwu/whisperer/internal/config"
 	"github.com/zhuzhenwu/whisperer/internal/i18n"
+	"github.com/zhuzhenwu/whisperer/internal/investigator"
 	wlog "github.com/zhuzhenwu/whisperer/internal/log"
 	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
@@ -61,6 +62,14 @@ func main() {
 	// 极早分支：`whisperer init` 子命令在加载 config 之前就跑向导（避免空配置撞错误）
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		runInitSubcommand(resolvedConfigPath)
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "scenario" {
+		runScenarioSubcommand(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "fog-harbor" {
+		runFogHarborSubcommand(os.Args[2:])
 		return
 	}
 
@@ -101,6 +110,7 @@ func main() {
 	modelOverride := flag.String("model", fileCfg.Model, "override GM model id (full vendor/model on OpenRouter)")
 	modelHelperOverride := flag.String("model-helper", fileCfg.ModelHelper, "override Haiku/helper model id")
 	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
+	investigatorTemplate := flag.String("investigator-template", "journalist", "new-save investigator template: journalist | private_eye | doctor")
 	variantID := flag.String("variant", fileCfg.Variant, "force a specific variant id (default: weighted random)")
 	seed := flag.Int64("seed", fileCfg.Seed, "deterministic variant selection seed (0 = unix nano)")
 	metaPath := flag.String("meta", fileCfg.MetaPath, "cross-run meta file path; '-' to disable")
@@ -196,7 +206,7 @@ func main() {
 	}
 
 	currentSaveID, scn, chosenVariant, opening, needsScenarioApply, err := ensureSaveWithVariant(
-		ctx, st, baseScn, *saveID, *variantID, *seed,
+		ctx, st, baseScn, *saveID, *variantID, *seed, *investigatorTemplate,
 	)
 	if err != nil {
 		fail("ensure save", err)
@@ -282,6 +292,7 @@ func ensureSaveWithVariant(
 	base *scenario.Scenario,
 	saveID, forceVariant string,
 	seed int64,
+	investigatorTemplateID string,
 ) (string, *scenario.Scenario, string, string, bool, error) {
 	repo := st.Repo()
 	if saveID != "" {
@@ -319,15 +330,11 @@ func ensureSaveWithVariant(
 	}); err != nil {
 		return "", nil, "", "", false, err
 	}
-	if err := repo.UpsertInvestigator(ctx, store.Investigator{
-		ID: uuid.NewString(), SaveID: id,
-		Name: "未命名调查员", Occupation: "记者",
-		AttrsJSON:  `{"STR":50,"CON":60,"SIZ":55,"DEX":60,"APP":50,"INT":75,"POW":60,"EDU":80}`,
-		SkillsJSON: `{"Spot Hidden":50,"Library Use":60,"Listen":40,"Psychology":40}`,
-		HP:         12, MP: 12, SAN: 60,
-		InventoryJSON: `["笔记本","钢笔"]`,
-		Active:        true,
-	}); err != nil {
+	tmpl, ok := investigator.ByID(investigatorTemplateID)
+	if !ok {
+		return "", nil, "", "", false, investigator.ErrUnknownTemplate(investigatorTemplateID)
+	}
+	if err := repo.UpsertInvestigator(ctx, investigator.NewFromTemplate(id, tmpl)); err != nil {
 		return "", nil, "", "", false, err
 	}
 	opening := scenario.RenderOpeningBriefing(eff)

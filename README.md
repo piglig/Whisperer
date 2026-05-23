@@ -89,8 +89,12 @@ export GEMINI_API_KEY=...
 ## Quickstart
 
 ```bash
-# 默认：自动建档 + 占位调查员 + fog_harbor 剧本 + 加权随机选 variant
+# 默认：自动建档 + 记者模板调查员 + fog_harbor 剧本 + 加权随机选 variant
 ./whisperer
+
+# 使用其他快速模板
+./whisperer --investigator-template=private_eye
+./whisperer --investigator-template=doctor
 
 # 强制选某 variant + 固定种子（便于回放调试）
 ./whisperer --variant=calvin_directs --seed=42
@@ -100,6 +104,19 @@ export GEMINI_API_KEY=...
 
 # 不调 LLM 的冷启动检查
 ./whisperer --smoke
+
+# 检查内置剧本的结构与可玩性（不需要 API key）
+./whisperer scenario lint --scenario fog_harbor
+./whisperer scenario lint --all
+./whisperer scenario lint --scenario fog_harbor --json
+
+# 不调 LLM 的雾港动态验收
+./whisperer fog-harbor playtest --path mainline
+./whisperer fog-harbor playtest --all --json
+
+# 一键健康检查：剧本 lint + 雾港全路径自动验收
+./whisperer fog-harbor verify
+./whisperer fog-harbor verify --json
 ```
 
 进入 TUI 后输入你想做的事即可（自然语言）。常用命令：
