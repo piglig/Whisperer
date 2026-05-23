@@ -28,6 +28,9 @@ type ReportClue struct {
 	Description string `json:"description"`
 	Tier        int    `json:"tier,omitempty"`
 	FoundAtTurn int    `json:"found_at_turn,omitempty"`
+	// Leads 仅对 MissingKeyClues 填充：本来可以走的路径（哪个触发器 / 地点 / NPC）。
+	// 用于让玩家在下一局知道下次该往哪走，是"跨周目重开性"的核心反馈。
+	Leads []ClueLead `json:"leads,omitempty"`
 }
 
 type NPCOutcome struct {
@@ -74,6 +77,7 @@ func BuildCaseReport(s *Scenario, in CaseReportInput) *CaseReport {
 			meta.FoundAtTurn = clue.FoundAtTurn
 			report.FoundKeyClues = append(report.FoundKeyClues, meta)
 		} else {
+			meta.Leads = LeadsForClue(s, id)
 			report.MissingKeyClues = append(report.MissingKeyClues, meta)
 		}
 	}

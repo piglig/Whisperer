@@ -187,8 +187,9 @@ type Condition struct {
 	Any []Condition `yaml:"any,omitempty" json:"any,omitempty"`
 	Not *Condition  `yaml:"not,omitempty" json:"not,omitempty"`
 
-	LocationVisited string  `yaml:"location_visited,omitempty" json:"location_visited,omitempty"`
-	CurrentLocation string  `yaml:"current_location,omitempty" json:"current_location,omitempty"`
+	LocationVisited string   `yaml:"location_visited,omitempty" json:"location_visited,omitempty"`
+	CurrentLocation string   `yaml:"current_location,omitempty" json:"current_location,omitempty"`
+	LocationIn      []string `yaml:"location_in,omitempty" json:"location_in,omitempty"` // 玩家当前位置 ∈ 列表中任一
 	ClueFound       string  `yaml:"clue_found,omitempty" json:"clue_found,omitempty"`
 	NPCDead         string  `yaml:"npc_dead,omitempty" json:"npc_dead,omitempty"`
 	NPCRelationLT   *RelChk `yaml:"npc_relation_lt,omitempty" json:"npc_relation_lt,omitempty"`

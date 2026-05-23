@@ -683,7 +683,9 @@ triggers:
     when:
       all:
         - clue_found: reef_carvings
-        - current_location: pub
+        # 两个对峙地点：礁洞（拿到拓片之后当场对峙）或酒馆（带回拓片再摊牌）。
+        # 默认 variant 不再强制玩家"出洞回酒馆"那种反直觉路径。
+        - location_in: [pub, reef_cave]
     then:
       - update_npc_relation:
           npc_id: vance

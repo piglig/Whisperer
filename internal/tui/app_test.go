@@ -291,7 +291,14 @@ func TestFormatCaseReport(t *testing.T) {
 		CulpritName:    "范斯医生",
 		FoundKeyClues:  []scenario.ReportClue{{ID: "ledger", Description: "账册"}},
 		MissingKeyClues: []scenario.ReportClue{
-			{ID: "reef_carvings", Description: "礁洞拓片"},
+			{
+				ID:          "reef_carvings",
+				Description: "礁洞拓片",
+				Leads: []scenario.ClueLead{
+					{Kind: "trigger", TriggerID: "reef_cave_open", Hint: "条件：已触发：lighthouse_storm + 第 14 回合之后"},
+					{Kind: "location", LocationID: "reef_cave", Hint: "去 礁洞"},
+				},
+			},
 		},
 		NPCOutcomes:  []scenario.NPCOutcome{{ID: "anna", Name: "安娜", Alive: false}},
 		Threats:      []scenario.ThreatStatus{{Name: "安娜危险", StateLabel: "失踪", Severity: 4}},
@@ -303,6 +310,8 @@ func TestFormatCaseReport(t *testing.T) {
 	assert.Contains(t, out, "本局真凶")
 	assert.Contains(t, out, "账册")
 	assert.Contains(t, out, "礁洞拓片")
+	assert.Contains(t, out, "下次试试")
+	assert.Contains(t, out, "去 礁洞")
 	assert.Contains(t, out, "安娜")
 	assert.Contains(t, out, "风险结算")
 	assert.Contains(t, out, "本局真相摘要")

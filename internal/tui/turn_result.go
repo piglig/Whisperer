@@ -108,6 +108,9 @@ func formatCaseReport(report *scenario.CaseReport) string {
 		lines = append(lines, "", "遗漏关键证据")
 		for _, clue := range report.MissingKeyClues {
 			lines = append(lines, "  - "+nonEmpty(clue.Description, clue.ID))
+			for _, lead := range clue.Leads {
+				lines = append(lines, "      下次试试 · "+lead.Hint)
+			}
 		}
 	}
 	if npcLines := reportNPCOutcomeLines(report.NPCOutcomes); len(npcLines) > 0 {

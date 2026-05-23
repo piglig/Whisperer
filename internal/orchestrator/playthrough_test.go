@@ -57,6 +57,8 @@ func TestFogHarbor_Playthrough_SolvedPath(t *testing.T) {
 	assertLocation(t, st, ctx, saveID, "reef_cave")
 	assert.True(t, foundClue(t, st, ctx, saveID, "reef_carvings"))
 	assert.True(t, foundClue(t, st, ctx, saveID, "sacrifice_chamber"))
+	// culprit_confronted 现在接受 reef_cave 或 pub 作为对峙地点；拿到拓片当回合即点燃。
+	assertFired(t, res, "culprit_confronted")
 
 	res = run("回到灯塔")
 	assertLocation(t, st, ctx, saveID, "lighthouse")
@@ -69,7 +71,6 @@ func TestFogHarbor_Playthrough_SolvedPath(t *testing.T) {
 	require.NotNil(t, res.Report)
 	assert.Equal(t, "solved", res.Ending.ID)
 	assert.Equal(t, "success", res.Ending.Kind)
-	assertFired(t, res, "culprit_confronted")
 	assert.True(t, reportHasClue(res.Report.FoundKeyClues, "blood_letter"))
 	assert.True(t, reportHasClue(res.Report.FoundKeyClues, "ledger"))
 	assert.True(t, reportHasClue(res.Report.FoundKeyClues, "sacrifice_chamber"))

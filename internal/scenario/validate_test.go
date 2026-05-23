@@ -22,6 +22,18 @@ triggers:
   - id: t1
     when: {location_visited: missing}
     then: [{add_event: {type: x, description: y}}]`,
+		"unknown location_in entry": `
+id: x
+title: t
+locations: [{id: a, name: A, description: x}]
+clues: []
+npcs: []
+start: {location: a}
+key_clues: []
+triggers:
+  - id: t1
+    when: {location_in: [a, missing]}
+    then: [{add_event: {type: x, description: y}}]`,
 		"unknown clue": `
 id: x
 title: t

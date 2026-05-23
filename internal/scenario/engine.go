@@ -303,6 +303,13 @@ func evalCondition(c Condition, v stateView) (bool, error) {
 		return v.VisitedLocs[c.LocationVisited], nil
 	case c.CurrentLocation != "":
 		return v.Save.CurrentLocationID == c.CurrentLocation, nil
+	case len(c.LocationIn) > 0:
+		for _, id := range c.LocationIn {
+			if v.Save.CurrentLocationID == id {
+				return true, nil
+			}
+		}
+		return false, nil
 	case c.ClueFound != "":
 		return v.FoundClues[c.ClueFound], nil
 	case c.NPCDead != "":

@@ -44,6 +44,13 @@ func TestEvalCondition_All_Any_Not(t *testing.T) {
 	mustCondition(t, Condition{TurnGE: 6}, v, false)
 	mustCondition(t, Condition{TriggerFired: "t1"}, v, true)
 
+	// location_in: 命中任一即真
+	vLoc := v
+	vLoc.Save.CurrentLocationID = "pub"
+	mustCondition(t, Condition{LocationIn: []string{"pub", "reef_cave"}}, vLoc, true)
+	mustCondition(t, Condition{LocationIn: []string{"reef_cave", "pub"}}, vLoc, true)
+	mustCondition(t, Condition{LocationIn: []string{"church"}}, vLoc, false)
+
 	// All / Any / Not 组合
 	mustCondition(t, Condition{All: []Condition{
 		{LocationVisited: "a"}, {ClueFound: "c1"},

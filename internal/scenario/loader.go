@@ -397,6 +397,13 @@ func validateCondition(c *Condition, locs, npcs, clues, triggers map[string]bool
 			return fmt.Errorf("current_location references unknown %q", c.CurrentLocation)
 		}
 	}
+	if len(c.LocationIn) > 0 {
+		for _, id := range c.LocationIn {
+			if !locs[id] {
+				return fmt.Errorf("location_in references unknown %q", id)
+			}
+		}
+	}
 	if c.ClueFound != "" {
 		if !clues[c.ClueFound] {
 			return fmt.Errorf("clue_found references unknown %q", c.ClueFound)
@@ -457,6 +464,9 @@ func conditionFieldCount(c Condition) int {
 		count++
 	}
 	if c.CurrentLocation != "" {
+		count++
+	}
+	if len(c.LocationIn) > 0 {
 		count++
 	}
 	if c.ClueFound != "" {
