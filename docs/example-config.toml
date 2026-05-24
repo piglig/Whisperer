@@ -1,57 +1,63 @@
-# Whisperer 配置示例。
+# Whisperer configuration example.
 #
-# 默认查找路径：
-#   - $XDG_CONFIG_HOME/whisperer/config.toml      （POSIX 推荐）
-#   - $HOME/.config/whisperer/config.toml         （POSIX 兜底）
-#   - %APPDATA%/whisperer/config.toml             （Windows）
+# Default locations:
+#   - $XDG_CONFIG_HOME/whisperer/config.toml
+#   - $HOME/.config/whisperer/config.toml
+#   - %APPDATA%/whisperer/config.toml on Windows
 #
-# 也可以用 `whisperer --config /path/to/config.toml` 显式指定。
+# Override with:
+#   whisperer --config /path/to/config.toml
 #
-# 优先级（高 → 低）：CLI flag > 环境变量 > 本文件 > 内置默认。
+# Precedence:
+#   CLI flags > environment variables > this file > built-in defaults
 #
-# !!  API key 不写在这里。  !!
-# 出于安全考虑，本文件不接受 api_key 字段。请用环境变量：
-#   ANTHROPIC_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY /
-#   XAI_API_KEY / GEMINI_API_KEY
-# 或者 CLI flag `--api-key`。
-# 这样 config 文件可以放心提交到 dotfiles 仓库。
+# Do not put API keys in this file. Use environment variables:
+#   ANTHROPIC_API_KEY
+#   OPENROUTER_API_KEY
+#   OPENAI_API_KEY
+#   XAI_API_KEY
+#   GEMINI_API_KEY
 
-# ---- LLM provider ----
-provider = "anthropic"                                  # anthropic | openrouter | openai | grok | gemini
-# model        = "claude-sonnet-4-7-20260101"          # GM 模型；不填走 SDK 内置常量
-# model_helper = "claude-haiku-4-5"                    # NPC / judge 子代理模型
+# ---- LLM provider ---------------------------------------------------------
 
-# ---- 语义记忆 / SLA judge ----
-embedder = "openai"                                    # openai | openai_compat | fake | off
+provider = "anthropic"                 # anthropic | openrouter | openai | grok | gemini
+# model = "claude-sonnet-4-7-20260101"
+# model_helper = "claude-haiku-4-5"
+
+# ---- Semantic memory and judge -------------------------------------------
+
+embedder = "openai"                    # openai | openai_compat | fake | off
 embedder_model = "text-embedding-3-small"
-embedder_base_url = "https://api.openai.com/v1"        # OpenAI-compatible embeddings endpoint
-embedder_api_key_env = "OPENAI_API_KEY"                # API key 仍只从环境变量读取
-# 临时覆盖可用 CLI：--embedder-api-key <key>；不要写进本文件。
+embedder_base_url = "https://api.openai.com/v1"
+embedder_api_key_env = "OPENAI_API_KEY"
 
-enable_judge = false                                   # true 时启用 NPC/知识边界语义校验
-# judge_model = "claude-haiku-4-5"                     # 不填则复用 model_helper
+enable_judge = false
+# judge_model = "claude-haiku-4-5"
 
-# ---- 剧本与存档 ----
-scenario  = "fog_harbor"
-# save    = "01HZX..."                                  # 续读已有存档；空则新建
-# variant = "vance_executes"                            # 强制 variant；空则按权重随机
-# seed    = 42                                          # variant 随机种子（0 = unix nano）
+# ---- Scenario and save ----------------------------------------------------
 
-# ---- 持久化路径 ----
-db_path    = "whisperer.db"
+scenario = "fog_harbor"
+# save = "01HZX..."
+# variant = "vance_executes"
+# seed = 42
+
+# ---- Persistence ----------------------------------------------------------
+
+db_path = "whisperer.db"
 memory_dir = "mem"
-trace_dir  = "runs"
-meta_path  = "runs/meta.json"
+trace_dir = "runs"
+meta_path = "runs/meta.json"
 
-# ---- 日志 ----
-log_format = "text"                                     # text | json
-log_level  = "info"                                     # debug | info | warn | error
+# ---- Logging --------------------------------------------------------------
 
-# ---- UI ----
-# lang = "zh-CN"                                        # 留空 → 按 $LANG / $LC_ALL 自动检测
+log_format = "text"                    # text | json
+log_level = "info"                     # debug | info | warn | error
 
-# ---- LLM 网络层 ----
-llm_max_retries = 3                                     # 0 走 SDK 默认
-llm_timeout     = "120s"                                # Go duration 字符串
+# ---- UI -------------------------------------------------------------------
 
-# 开发离线模式可显式使用 embedder = "fake"；真实游玩建议保留 openai/openai_compat。
+# lang = "zh-CN"                       # zh-CN | en | auto
+
+# ---- LLM network behavior -------------------------------------------------
+
+llm_max_retries = 3
+llm_timeout = "120s"

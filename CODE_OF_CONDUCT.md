@@ -1,58 +1,52 @@
-# Contributor Covenant Code of Conduct
+# Code of Conduct
 
-## 我们的承诺
+Whisperer follows the Contributor Covenant Code of Conduct, version 2.1.
 
-为了营造一个开放且热情的环境，作为贡献者和维护者，我们承诺让本项目和参与本社区
-的体验对所有人都不带骚扰，无关年龄、体型、可见或不可见的残障、族裔、性征、
-性别认同与表达、经验水平、教育、社会经济地位、国籍、个人外貌、种族、宗教、
-或性取向。
+## Our Pledge
 
-## 我们的标准
+We pledge to make participation in this project respectful and harassment-free
+for everyone, regardless of age, body size, visible or invisible disability,
+ethnicity, sex characteristics, gender identity and expression, level of
+experience, education, socio-economic status, nationality, personal appearance,
+race, caste, color, religion, or sexual identity and orientation.
 
-营造积极环境的行为示例：
+## Expected Behavior
 
-- 使用包容性的语言
-- 尊重不同的观点和经历
-- 优雅地接受建设性批评
-- 关注对社区最有利的事情
-- 对其他社区成员表现出同情
+Examples of behavior that contributes to a positive environment:
 
-参与者不可接受的行为示例：
+- using welcoming and inclusive language
+- respecting different viewpoints and experiences
+- accepting constructive feedback gracefully
+- focusing on what is best for the project and its users
+- showing empathy toward other community members
 
-- 使用带有性意味的语言或图像，以及不受欢迎的性骚扰
-- 挑衅、侮辱或贬损的评论；人身或政治攻击
-- 公开或私下的骚扰
-- 未经明确许可，发布他人的私人信息（例如住址、电邮）
-- 在专业环境中合理认为不当的其他行为
+## Unacceptable Behavior
 
-## 维护者职责
+Examples of unacceptable behavior:
 
-项目维护者有责任阐明可接受行为的标准，并应针对任何不可接受行为采取适当且公正的
-纠正措施。
+- sexualized language or imagery
+- trolling, insulting or derogatory comments, and personal attacks
+- public or private harassment
+- publishing private information without explicit permission
+- conduct that would reasonably be considered inappropriate in a professional
+  setting
 
-项目维护者有权且有责任删除、编辑或拒绝不符合本行为准则的评论、commit、代码、
-wiki 编辑、issue 与其他贡献，并临时或永久封禁任何贡献者其行为被认为不当、
-威胁、冒犯或有害。
+## Enforcement
 
-## 适用范围
+Project maintainers may remove, edit, or reject comments, commits, code, wiki
+edits, issues, pull requests, or other contributions that do not align with
+this Code of Conduct.
 
-本行为准则适用于本项目的所有空间，并且当个人代表本项目或其社区时，也适用于
-公共空间。代表本项目或其社区的示例包括使用官方电子邮件地址、通过官方社交媒体
-账户发布信息、或在线上或线下活动中担任指定代表。维护者可进一步定义项目代表
-的具体范围。
+Maintainers may temporarily or permanently ban contributors for behavior they
+deem inappropriate, threatening, offensive, or harmful.
 
-## 执行
+## Reporting
 
-辱骂、骚扰或其他不可接受的行为，可通过 GitHub Security Advisory（私密报告）联系
-项目团队。所有投诉将得到审查和调查，并将作出被认为必要且适合具体情况的回应。
-项目团队有义务对事件举报者保密。具体执行政策的更多细节可能会单独公布。
+Report unacceptable behavior privately through the same private channel
+described in [SECURITY.md](SECURITY.md). Maintainers will review and investigate
+reports and will protect reporter privacy as much as possible.
 
-不善意遵守或执行本行为准则的项目维护者，可能会面临由项目领导层其他成员决定的
-临时或永久后果。
+## Attribution
 
-## 致谢
-
-本行为准则改编自 [Contributor Covenant][homepage] 2.1 版，详见
-<https://www.contributor-covenant.org/version/2/1/code_of_conduct/>。
-
-[homepage]: https://www.contributor-covenant.org
+This Code of Conduct is adapted from the Contributor Covenant, version 2.1:
+<https://www.contributor-covenant.org/version/2/1/code_of_conduct/>.

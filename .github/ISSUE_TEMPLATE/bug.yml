@@ -1,41 +1,55 @@
 name: Bug report
-description: 报告一个 bug——与预期行为不一致。
+description: Report behavior that differs from the expected product or engineering contract.
 title: "[bug] "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢花时间来报 bug。请尽量提供具体的复现步骤——猜不到的 bug 修不掉。
+        Thanks for reporting a bug. Please include enough detail for maintainers to reproduce it locally.
+        Do not include API keys or unredacted private traces.
 
   - type: input
     id: version
     attributes:
-      label: Whisperer 版本
-      description: 跑 `whisperer --version`（或 `git rev-parse HEAD` 如果是源码构建）。
-      placeholder: "v0.3.1 或 commit hash"
+      label: Version or commit
+      description: Run `git rev-parse HEAD` for source builds.
+      placeholder: "v0.3.1 or commit hash"
     validations:
       required: true
 
   - type: input
     id: go-version
     attributes:
-      label: Go 版本
-      description: 跑 `go version`。
-      placeholder: "go1.25.0 linux/amd64"
+      label: Go version
+      description: Run `go version`.
+      placeholder: "go1.25.8 darwin/arm64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Affected lane
+      options:
+        - Runtime
+        - Authoring
+        - Observability
+        - Documentation
+        - Not sure
     validations:
       required: true
 
   - type: dropdown
     id: os
     attributes:
-      label: 操作系统
+      label: Operating system
       options:
-        - Linux
         - macOS
+        - Linux
         - Windows
         - WSL
-        - 其他
+        - Other
     validations:
       required: true
 
@@ -44,43 +58,53 @@ body:
     attributes:
       label: LLM provider
       options:
-        - Anthropic 官方
+        - Anthropic
         - OpenRouter
-        - 其他 / 不涉及 LLM
+        - OpenAI
+        - Grok / xAI
+        - Gemini
+        - Not related to LLM
     validations:
       required: true
 
   - type: textarea
     id: repro
     attributes:
-      label: 复现步骤
-      description: 步骤列表——每一步都要让我们能照做。
+      label: Reproduction steps
+      description: Provide exact commands and player inputs when possible.
       placeholder: |
-        1. `./whisperer --variant=calvin_directs --seed=42`
-        2. 在第 3 回合输入「我去教堂」
-        3. ...
+        1. `./whisperer --variant calvin_directs --seed 42`
+        2. Enter `去教堂`
+        3. Observe ...
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: 预期行为
+      label: Expected behavior
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: 实际行为
-      description: 必要时附 trace（`runs/<save_id>/<ts>.jsonl`）；**API key 务必抹掉**。
+      label: Actual behavior
+      description: Attach redacted trace snippets when useful.
     validations:
       required: true
 
   - type: textarea
-    id: extra
+    id: validation
     attributes:
-      label: 其他线索
-      description: 已经尝试过的东西、可能的怀疑点、相关 PR/issue 链接。
+      label: Local validation
+      description: Commands you ran, such as `go test ./...` or `scenario verify`.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
     validations:
       required: false

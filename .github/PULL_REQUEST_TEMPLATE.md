@@ -1,39 +1,52 @@
-<!--
-感谢 PR！请填写下面的简表。删除不相关的章节即可。
--->
+## Summary
 
-## 这个 PR 解决了什么
+<!-- What problem does this PR solve? Link issues with Closes #123 or Refs #123. -->
 
-<!-- 一段说明问题 / 动机；关联 issue 用 `Closes #123` / `Refs #45`。 -->
+## Changes
 
-## 改动概要
-
-<!-- bullet 列出主要改动；强调"为什么这样改"，不是 diff 已经写明的"是什么"。 -->
+<!-- List the main implementation, product, or documentation changes. -->
 
 -
 -
 
-## 测试方式
+## Lane
 
-<!-- 至少一项。 -->
+<!-- Choose the primary lane. -->
 
-- [ ] `make test` 全绿
-- [ ] `make cover` ≥ 85%
-- [ ] `make lint` 干净
-- [ ] 真机 e2esmoke 跑了 mainline（如改动涉及 LLM 路径）
-- [ ] 手动验证：<描述步骤>
+- [ ] Runtime
+- [ ] Authoring
+- [ ] Observability
+- [ ] Documentation / maintenance
 
-## 破坏性变更
+## Validation
 
-<!-- 是否破坏了已有 save、剧本格式、配置语义、CLI 标志？描述迁移路径。 -->
+<!-- Check everything that applies and include manual steps when useful. -->
 
-- [ ] 无破坏性变更
-- [ ] 有破坏性变更（描述 ↓）：
+- [ ] `go test ./...`
+- [ ] `go build ./...`
+- [ ] `make test`
+- [ ] `make cover`
+- [ ] `make lint`
+- [ ] `go run ./cmd/whisperer scenario verify --scenario fog_harbor`
+- [ ] Manual validation:
+
+## Breaking Changes
+
+<!-- This project is pre-1.0, but call out save/config/CLI/schema changes. -->
+
+- [ ] None
+- [ ] Yes:
+
+## Documentation
+
+- [ ] README / docs updated
+- [ ] specs / ADR updated
+- [ ] CHANGELOG updated
+- [ ] Not needed
 
 ## Checklist
 
-- [ ] 我读过 [CONTRIBUTING.md](../CONTRIBUTING.md)
-- [ ] commit 信息祈使句 + 解释 *为什么*
-- [ ] 公有 API 有 godoc 注释
-- [ ] CHANGELOG 在 `[Unreleased]` 段加了一行
-- [ ] 不引入新依赖；如引入已在 PR 描述里说明权衡
+- [ ] I read `CONTRIBUTING.md`
+- [ ] Public Go APIs have comments
+- [ ] New scenario behavior has authoring tests or gates
+- [ ] No secrets were added to logs, traces, config, or cassettes

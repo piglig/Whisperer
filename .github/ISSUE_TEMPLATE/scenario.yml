@@ -1,64 +1,72 @@
-name: Scenario contribution / suggestion
-description: 投稿一份新剧本，或提出剧本改进建议。
+name: Scenario proposal
+description: Propose a new scenario or a scenario quality improvement.
 title: "[scenario] "
 labels: ["scenario", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢愿意为 Whisperer 写剧本。在打开 issue 前请先读：
-        - [`specs/05-scenario-and-triggers.md`](../../specs/05-scenario-and-triggers.md)（YAML schema）
-        - [`specs/08-fog-harbor-canon.md`](../../specs/08-fog-harbor-canon.md)（设计案例）
-        - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) 中的"写新剧本"章节
+        Scenario work should be original or clearly safe to distribute. Please read:
+        - `specs/05-scenario-and-triggers.md`
+        - `specs/08-fog-harbor-canon.md`
+        - `CONTRIBUTING.md`
 
   - type: dropdown
     id: kind
     attributes:
-      label: 投稿类型
+      label: Proposal type
       options:
-        - 全新剧本（已草拟大纲）
-        - 现有剧本修订（指明哪一份）
-        - 仅设计建议——希望维护者实现
+        - New scenario
+        - Existing scenario improvement
+        - Authoring/tooling improvement
+        - Content bug
     validations:
       required: true
 
   - type: input
     id: title
     attributes:
-      label: 剧本标题与背景
-      placeholder: 例：《灰镇火葬场》——1923 年新英格兰冬夜的小镇焚化炉
+      label: Scenario title
+      placeholder: "Example: The Ash House"
     validations:
       required: true
 
   - type: textarea
     id: pitch
     attributes:
-      label: 一句话 pitch
-      description: 玩家进入这个剧本时面对的核心钩子是什么？
+      label: Player-facing pitch
+      description: What hook does the investigator receive?
     validations:
       required: true
 
   - type: textarea
     id: structure
     attributes:
-      label: 三幕结构 / 主要地点 / NPC 数 / 线索数估
-      description: 不要求精确——粗略草图即可让维护者评估规模。
+      label: Structure
+      description: Locations, NPCs, clue count, endings, variants, and expected length.
     validations:
       required: true
 
   - type: textarea
-    id: replayability
+    id: clue_design
     attributes:
-      label: 重开性设计
-      description: 计划用几个 variant？是否有 Three Clue Rule 冗余？是否有时间压力 trigger？
+      label: Clue design
+      description: Explain key conclusions and Three Clue Rule redundancy.
+    validations:
+      required: true
+
+  - type: textarea
+    id: authoring
+    attributes:
+      label: Authoring coverage
+      description: Proposed playtest paths and verify gates.
     validations:
       required: false
 
   - type: textarea
-    id: ip
+    id: rights
     attributes:
-      label: IP 与版权
-      description: 是原创吗？基于公有领域素材吗？是否引用任何受版权保护的设定？
-      placeholder: 例：完全原创；neftaleo 灵感来自 Lovecraft 小说《The Festival》（已进入公有领域，1923 年发表）
+      label: Rights and source material
+      description: Confirm the work is original, public domain, or otherwise safe to distribute.
     validations:
       required: true

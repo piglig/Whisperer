@@ -1,344 +1,78 @@
-# LLM 驱动的桌面 RPG GM —— 需求文档
+# Product Brief: LLM-Guided Investigative RPG
 
-## 1. Context（背景与动机）
+## Status
 
-### 问题
-传统桌面 RPG（如《克苏鲁的呼唤》）需要凑齐 4-5 个玩家 + 一位经验丰富的 GM + 整段空闲时间，门槛极高。市面上现有的 AI 替代品（AI Dungeon、NovelAI）本质是"无限续写互动小说"——没有真正的规则裁定、没有持久化世界状态、没有长期因果，玩家说"我杀了龙"AI 就配合"你杀了龙"，缺乏真实跑团的张力。
+Historical product brief. The implementation has evolved beyond the first
+implementation plan; use README and `specs/` as the current source of truth.
 
-### 目标产物
-一个**单人可玩、由 LLM 驱动、规则确定性可信**的 CoC 7e 跑团模拟器。LLM 负责叙事、NPC 扮演、氛围营造；代码负责骰子、规则、状态持久化。
+## Problem
 
-### 为什么值得做（作为简历项目）
-- 集中体现 **Agent + Tool Use + RAG + 长期记忆 + 状态机** 的综合工程能力
-- 难点是系统设计而非 Prompt 调优，是真实的工程项目
-- 主题具备话题性，演示效果远超传统 CRUD/Chatbot 项目
+Tabletop investigative RPGs require a GM, players, scheduling, rules knowledge,
+and sustained attention. Most AI story tools can improvise prose, but they do
+not reliably enforce rules, preserve state, or respect player failure.
 
----
+Whisperer explores a stricter model:
 
-## 2. 范围决策（已与用户确认）
+- the LLM performs atmosphere, NPC voice, and scene narration
+- deterministic code owns rules and state
+- authoring tools verify scenario quality
+- traces make failures inspectable
 
-| 维度 | 决策 | 备注 |
-|---|---|---|
-| 规则系统 | **克苏鲁的呼唤 7e** | 规则简单（d100 + 技能值），氛围驱动，与 LLM 长处契合，免费快速规则文档可用 |
-| 玩家模式 | **单人单角色**（一名调查员） | MVP 最小可行形态，避免多角色调度复杂度 |
-| 项目定位 | **个人作品 / 简历项目**，1-2 个月 | 目标可演示、可讲清架构 |
-| 首发界面 | **TUI（终端文字界面）** | 用 `rich` / `textual` 做出有质感的终端体验，专注后端架构 |
-| 后续可选 | 轻量 Web 前端（复用后端 API） | 不在 MVP 范围 |
-| 首发剧本 | **《雾港疑案》原版** | 严格按官方剧本运行，不改编场景与 NPC 设定 |
-| MVP 剧本规模 | **4–6 场景 / 6–10 NPC / ~15 线索 / 1 主线 + ≥2 失败收束** | 对齐 G1 的 60–90 分钟通关时长 |
-| 调查员成长 | **包含**（剧本结束结算技能成长） | CoC 7e 核心成就感来源；MVP 仅做单剧本结算，不做跨剧本战役 |
+## Product Goals
 
----
+- single-player local investigative RPG
+- deterministic d100 rules
+- persistent world state
+- scenario-specific NPC secrets and knowledge boundaries
+- clear blocked-action explanations
+- replayable scenarios with variants and endings
+- local trace and replay tooling for content iteration
 
-## 3. 目标（Goals）与非目标（Non-Goals）
+## Non-Goals
 
-### Goals（MVP 必须达成）
-- G1. 玩家能从开始到结束完整跑通《雾港疑案》原版短剧本（预期 60–90 分钟）
-- G2. 骰子检定、伤害计算、SAN 值变化等**全部由代码裁决**，LLM 不允许私自宣判结果
-- G3. NPC 在整局游戏中保持人格一致性，不会前后矛盾
-- G4. 世界状态持久化：玩家烧掉的房子、获得的物品、建立/破坏的 NPC 关系，在后续场景中正确反映
-- G5. 玩家可随时存档/读档，断点续玩
-- G6. 调查员死亡或不定性疯狂时，系统给出**尸检页面**并提供"载入最近自动存档 / 绑定新调查员到本剧本进度 / 退出"三种出口，玩家不被强制重开
-- G7. 剧本结束时执行**技能成长结算**：本局成功使用过的技能各做一次成长检定（1d100 > 当前值 → 提升 1d10）
+- multiplayer
+- mobile client
+- generated images or voice
+- full tactical combat simulator
+- support for every tabletop rule system
+- compatibility with early development saves or traces
 
-### Non-Goals（MVP 明确不做）
-- 多人联机
-- 多角色编队
-- 战斗系统的完整深度：MVP 战斗仅含【先攻、命中、伤害】，**不实现护甲、闪避、格挡**
-- AI 生成图像/语音
-- 用户上传自定义剧本（首发只支持内置剧本）
-- 移动端 / GUI
-- 支持其他规则系统（D&D 等）
-- 跨剧本的调查员持续战役（campaign）
+## Current Product Shape
 
----
+Whisperer now has three operating lanes:
 
-## 4. 核心用户流程
+| Lane | Purpose |
+|---|---|
+| Runtime | player-facing terminal game |
+| Authoring | scenario lint, deterministic playtest, verify gates |
+| Observability | e2e runs, trace replay, HTML viewer, reports |
 
-```
-[启动] → 选择剧本 → 创建/导入调查员（属性、技能、背景）
-   ↓
-[开场叙述] LLM 以 GM 身份描述场景、引入钩子
-   ↓
-┌─────────────────── 主循环 ───────────────────┐
-│ 玩家自由输入行动                              │
-│   ↓                                          │
-│ 行动粒度展开（粗粒度 → 隐式检定序列）         │
-│   ↓                                          │
-│ 意图分类（对话/检定/战斗/物品交互）           │
-│   ↓                                          │
-│ 规则引擎介入（必要时）                        │
-│   ↓                                          │
-│ 角色知识投射（按调查员技能值过滤可呈现信息）  │
-│   ↓                                          │
-│ LLM 生成叙事 + 后果                           │
-│   ↓                                          │
-│ 状态更新写入数据库                            │
-│   ↓                                          │
-│ 撤销窗口（玩家可 /redo 补充表述；骰已掷不可撤）│
-│   ↓                                          │
-│ 偏离监测（连续 3 回合无主线推进 → 软引导）    │
-└──────────────────────────────────────────────┘
-   ↓
-[剧本节点触发] → 推进剧情 / 进入新场景
-   ↓
-─────── 全局分支 ───────
-[失败收束] 调查员死亡 / SAN=0 / 偏离硬阈值
-   → 尸检页 / 结局页
-   → 选择：载入最近自动存档 / 绑定新调查员到本进度 / 退出
-─────────────────────
-   ↓
-[结局] 根据玩家行动分支 → 存档归档 → 技能成长结算
-```
+The first bundled scenario is Fog Harbor.
 
----
+## Core Experience
 
-## 5. 功能需求
+1. Player starts a save.
+2. TUI shows the case board and actionable choices.
+3. Player enters a natural-language action or selects an action.
+4. Orchestrator validates whether the action is currently possible.
+5. GM model narrates through tool calls.
+6. Tools apply rules and state changes.
+7. SLA and optional judge checks validate the result.
+8. Turn recap explains what happened.
+9. Trace is available for replay and debugging.
 
-### 5.1 调查员系统（Investigator）
-- F1.1 标准 CoC 7e 属性：STR/CON/SIZ/DEX/APP/INT/POW/EDU + 衍生（HP、MP、SAN、幸运）
-- F1.2 技能列表（精简到约 30 个核心技能：聆听、侦查、心理学、图书馆使用、克苏鲁神话…）
-- F1.3 背包/物品、当前 HP/MP/SAN、状态效果（受伤、临时疯狂、不定性疯狂）
-- F1.4 角色创建支持**全 24 官方职业模板的完整分步流程**：属性骰组（3d6×5 / (2d6+6)×5）、年龄修正、职业技能点（EDU×N）、兴趣技能点（INT×2）、信用评级与职业绑定；同时提供"快速生成"一键随机出卡作为演示入口
-- F1.5 **剧本结束结算与技能成长**：本局中标记为"成功使用过"的技能各做一次成长检定（1d100 > 当前值 → 提升 1d10）；输出结算页（成长项、SAN 恢复、剧本结局摘要）
+## Design Principles
 
-### 5.2 规则引擎（Rules Engine，**确定性核心**）
-- F2.1 `roll_skill(skill, difficulty)` —— 处理普通/困难/极难成功、大成功（≤5）、大失败
-- F2.2 `roll_damage(dice_expr)` —— 解析 `1d6+2` 这类骰子表达式
-- F2.3 `sanity_check(loss_pass, loss_fail)` —— SAN 检定 + 临时/不定性疯狂触发
-- F2.4 `opposed_roll(actor_skill, target_skill)` —— 对抗检定
-- F2.5 战斗简化模型：**先攻、命中、伤害**（MVP 不含护甲、闪避、格挡，与 §3 Non-Goals 对齐）
+- Failure must be playable and explained.
+- Rules results must be inspectable.
+- The model may narrate, but tools decide.
+- Scenario authors need automated content gates.
+- Debugging should happen through replay, not log archaeology.
 
-**约束**：所有骰子结果由 Python `random` 生成并记录到日志，**LLM 通过 tool calling 调用，不允许自行编造数值**。
+## Current References
 
-### 5.3 世界状态管理（World State）
-- F3.1 实体表：NPC、地点（Location）、物品（Item）、线索（Clue）、事件日志（Event）
-- F3.2 关系表：NPC ↔ 玩家关系值；地点 ↔ 地点连通性；NPC ↔ 知识（谁知道什么秘密）
-- F3.3 状态变更必须通过工具调用（`update_npc()`, `move_item()`, `mark_clue_found()` 等），不允许 LLM 隐式改变状态
-
-### 5.4 LLM GM 智能体
-- F4.1 系统 Prompt 明确角色：CoC GM、氛围营造、不剧透、尊重玩家自由意志
-- F4.2 工具集（Tool Use）：
-  - `roll_skill`, `roll_damage`, `sanity_check`（规则）
-  - `get_npc_info`, `get_location_info`, `query_clues`（读状态）
-  - `update_npc`, `update_player`, `add_event`, `transition_location`（写状态）
-- F4.3 RAG 检索：每回合从向量库召回相关 NPC、地点、历史事件，避免把全部历史塞进 context
-- F4.4 NPC 子代理：每个重要 NPC 单独维护人格档案，对话时切换到该 NPC 的子 prompt
-- F4.5 **群体对话规范**：默认由 GM 选 1 位最相关 NPC 回应；玩家可 `/talk <NPC>` 显式指名；玩家可 `/all` 对全场说话；其他在场 NPC 仅做环境反应（点头、插话、沉默），不抢主回合
-- F4.6 **行动粒度展开**：玩家粗粒度自由文本（"我搜查整个房间"）由 GM 自动拆解为隐式检定序列，并以一段叙事返回综合结果；高价值发现（关键线索物品）以"是否细查 X？"主动询问玩家以保留玩家代理感
-- F4.7 **角色知识投射**：调查员的技能/学识值决定其在叙事中"知道"的内容，以"你（调查员）想起…"等口吻显式标注；玩家本人即使知道相关知识，也不能让调查员行动越过其角色知识范围（GM 会出戏提醒）
-
-### 5.5 剧本系统（Scenario）
-- F5.1 剧本用 YAML/JSON 描述：场景列表、关键 NPC、线索网、触发器（如"玩家进入码头 AND 时间=夜晚 → 触发刺客袭击"）
-- F5.2 内置《雾港疑案》原版作为首发剧本（严格遵循官方场景、NPC、线索、主线/失败收束设定）
-- F5.3 触发器引擎在每回合结束后检查所有触发条件
-- F5.4 **偏离主线策略**：采用「软引导优先 → 硬收束兜底」两档机制
-  - **软引导**：当玩家连续 2 回合无主线推进时，GM 通过环境/NPC 暗示拉回（如关键 NPC 主动找上门、报纸出现新线索）；用语限制为暗示性，不直接报答案
-  - **硬收束**：满足"偏离阈值"（连续 3 回合无主线推进 OR 玩家显式拒绝主线钩子 ≥2 次）后，剧本进入预设失败收束之一（受害者死亡、凶手逃脱、调查员被解雇等）
-- F5.5 **时间系统**：粒度为"上午 / 下午 / 夜晚"三段制；GM 根据玩家动作隐式推进（搜查 1 处=不推进，跨地点移动=半段，长任务=完整推进）；关键转场显式提示（"夜幕降临，码头传来汽笛声"）；时间是触发器的一等条件，玩家可 `/time` 查询
-
-### 5.6 存档系统
-- F6.1 整局游戏状态可序列化为单个 SQLite 文件
-- F6.2 命令：`save <name>`, `load <name>`, `list saves`
-- F6.3 自动存档触发点：**进入新场景 / 关键检定前 / 关键 NPC 死亡前 / 战斗开始前**
-- F6.4 **多调查员 / 多存档语义**：玩家档案可包含任意数量的调查员；同一剧本支持多条进度线（不同存档名互不影响）；调查员死亡或不定性疯狂后，玩家可选择"绑定新调查员到本剧本进度"——剧本世界状态保留，调查员被替换并接续到最近自动存档点
-
-### 5.7 TUI 界面
-- F7.1 主面板：叙事流（滚动）
-- F7.2 侧栏：调查员状态（HP/SAN 实时显示）、当前地点、最近线索
-- F7.3 命令行输入：自由文本 + 斜杠命令
-  - 系统类：`/sheet`, `/inventory`, `/quit`
-  - 交互类：`/talk <NPC>` 指名对话、`/all` 对全场说话、`/time` 查询当前时间段
-  - 体验类：`/redo` 在下次输入前补充上一回合表述（骰子已掷出则拒绝）、`/hint` 主动求助提示（GM 给出环境/NPC 角度暗示，不直接给答案）
-- F7.4 骰子动画 / 关键检定的视觉强调（颜色、闪烁）
-
----
-
-## 6. 技术架构
-
-```
-┌─────────────────────────────────────────────┐
-│           TUI 层 (textual / rich)            │
-└─────────────────────────────────────────────┘
-                     ↕
-┌─────────────────────────────────────────────┐
-│            Game Loop / Orchestrator         │
-│  - 玩家输入路由                              │
-│  - 意图分类（轻量 LLM 或规则）               │
-└─────────────────────────────────────────────┘
-        ↕                    ↕                  ↕
-┌──────────────┐   ┌──────────────────┐   ┌──────────────┐
-│ Rules Engine │   │  GM Agent (LLM)  │   │  State Store │
-│   (pure Py)  │←→ │  + Tool Calling  │←→ │  (SQLite)    │
-│              │   │  + RAG Retrieval │   │              │
-└──────────────┘   └──────────────────┘   └──────────────┘
-                            ↕
-                   ┌──────────────────┐
-                   │  Vector Store    │
-                   │  (Chroma/FAISS)  │
-                   │  历史事件、NPC档案 │
-                   └──────────────────┘
-```
-
-### 技术栈选型
-| 组件 | 选型 | 理由 |
-|---|---|---|
-| 语言 | Python 3.11+ | LLM 生态最佳 |
-| LLM SDK | `anthropic` (Claude Sonnet 4.6 主力，Haiku 4.5 用于意图分类) | Tool use 成熟，性价比组合 |
-| TUI | `textual` | 现代 TUI 框架，支持 CSS 样式、热更新 |
-| 数据库 | SQLite + SQLAlchemy | 零依赖、单文件存档天然契合 |
-| 向量库 | `chromadb`（嵌入式模式） | 无需独立服务 |
-| 测试 | `pytest` + 录制重放（VCR）LLM 调用 | 规则引擎单测 + Agent 行为快照测试 |
-| 配置 | `pydantic-settings` | 类型安全 |
-
-### LLM 调用分层（成本控制）
-- **意图分类器**：Haiku 4.5，判断玩家输入属于哪类（对话/动作/查询/规则问题）
-- **NPC 小对话**：Haiku 4.5
-- **GM 主叙事 / 关键剧情**：Sonnet 4.6
-- **触发器评估**：纯代码，不调 LLM
-
----
-
-## 7. 数据模型（SQLite Schema 草案）
-
-```sql
--- 调查员
-investigators(id, name, occupation, attrs_json, skills_json, hp, mp, san, inventory_json)
-
--- NPC
-npcs(id, name, personality, knowledge_json, relation_to_player, location_id, alive)
-
--- 地点
-locations(id, name, description, parent_id, connections_json, visited)
-
--- 物品
-items(id, name, description, owner_type, owner_id, properties_json)
-
--- 线索
-clues(id, scenario_id, description, found, found_in_location_id, found_at_turn)
-
--- 事件日志（同时写入向量库用于 RAG）
-events(id, turn, type, description, related_entities_json, timestamp)
-
--- 存档元数据
-saves(id, name, scenario_id, current_location_id, turn_count, created_at, updated_at)
-```
-
----
-
-## 8. 项目目录结构
-
-```
-llm-rpg-gm/
-├── src/
-│   ├── rules/          # 规则引擎（纯逻辑，无 LLM）
-│   │   ├── dice.py
-│   │   ├── skill_check.py
-│   │   ├── sanity.py
-│   │   └── combat.py
-│   ├── state/          # 状态层
-│   │   ├── models.py   # SQLAlchemy 模型
-│   │   ├── repository.py
-│   │   └── vectorstore.py
-│   ├── agent/          # LLM Agent 层
-│   │   ├── gm_agent.py
-│   │   ├── npc_agent.py
-│   │   ├── intent_classifier.py
-│   │   ├── tools.py    # tool 定义 + 执行
-│   │   └── prompts/
-│   ├── scenarios/      # 剧本数据
-│   │   └── fog_harbor/
-│   │       ├── scenario.yaml
-│   │       └── npcs.yaml
-│   ├── tui/            # textual 界面
-│   │   ├── app.py
-│   │   ├── widgets/
-│   │   └── styles.tcss
-│   └── main.py
-├── tests/
-│   ├── test_rules/     # 规则引擎单测（关键，必须高覆盖）
-│   ├── test_state/
-│   └── test_agent/     # Agent 行为快照测试
-├── pyproject.toml
-└── README.md
-```
-
----
-
-## 9. 里程碑（建议时间线 ~6-8 周）
-
-| 周次 | 目标 | 验收标准 |
-|---|---|---|
-| W0 | **内容预制周** | 按《雾港疑案》原版整理出可供引擎使用的剧本骨架（场景图、NPC 清单、主线/可选线索、失败收束）+ 中文术语表草案；本地数据文件以自有复述形式编写，避免直接拷贝原版受版权保护的文本 |
-| W1 | 规则引擎 + 单测 | 骰子、技能检定、SAN 全部跑通，单测覆盖 ≥85% |
-| W2 | 状态层 + 数据模型 | SQLite schema、CRUD、存读档可用 |
-| W3 | GM Agent 基础 + Tool Use | LLM 能通过 tool 调用骰子并叙述结果 |
-| W4 | RAG + NPC 子代理 | 多 NPC 人格保持，长上下文不漂移 |
-| W5 | 剧本系统 + 触发器 | 内置剧本可端到端跑通 |
-| W6 | TUI 完整化 + 抛光 | 侧栏、命令、动画、错误处理 |
-| W7（可选） | 第二个剧本 + Bug fixes | 验证剧本系统扩展性 |
-| W8（可选） | Web 前端轻量版 | FastAPI + 简单 React 聊天界面 |
-
----
-
-## 10. 关键风险与应对
-
-| 风险 | 影响 | 应对 |
-|---|---|---|
-| LLM 私自宣判检定结果（"你成功说服了他"而没调骰子） | 破坏核心体验 | 定义 §11 的「GM 行为 SLA 清单」作为可断言的验收契约；运行时由后处理校验器对照清单执行（命中违规 → 回滚 + 重新生成，N 次后降级） |
-| 长 context 导致 NPC 人格漂移 | NPC 失真 | RAG 按需召回 + 每个 NPC 独立 prompt 档案 |
-| 玩家做出剧本作者没预料的行动 | 触发器失效、叙事崩塌 | LLM 兜底生成 + 动态触发器（"足够类似的事件"也算触发） |
-| LLM 调用成本失控 | 单局游戏 > $5 | Haiku/Sonnet 分层 + Prompt Caching + token 预算上限 |
-| 玩家利用 LLM 作弊（"我有 100 hp"） | 状态污染 | 所有状态改写必须经 tool，LLM 文本中的数值仅为叙事 |
-
----
-
-## 11. 验证方案（如何证明它能跑）
-
-### 单元验证
-- 规则引擎：`pytest tests/test_rules/` 全绿，覆盖率 ≥85%
-- 状态层：存档→修改→读档，状态完全一致
-
-### 集成验证（Agent 行为）
-- 录制典型玩家输入 → 断言 Agent 的 **tool 调用序列与参数**（结构化稳定）；文本仅做轻量断言，不做整段快照
-- 关键检查：
-  - 检定请求 → 必须调用 `roll_skill` tool
-  - 状态变更 → 必须调用对应 update tool
-  - NPC 对话 → 名字、口吻一致
-
-### GM 行为 SLA 清单（G3 / G4 的可断言验收契约）
-以下条目作为后处理校验器的判定基线，违反任意一条即视为本回合输出不合格：
-1. **检定即工具**：任何检定结果文本前必须存在对应 `roll_*` tool 调用，否则视为 LLM 私自宣判
-2. **状态即工具**：任何 NPC / 物品 / 地点 / 线索状态变更文本前必须存在对应 `update_*` / `mark_*` / `transition_*` tool 调用
-3. **NPC 一致性**：同一 NPC 二次登场时，其口头禅、对玩家称呼方式、第一人称/第三人称习惯必须沿用首次档案
-4. **物品守恒**：玩家上次销毁、带走或交予他人的物品，在后续描述中不得复活
-5. **数值不采信**：玩家在自由文本中声明的数值（"我有 100 HP""我闪避了"）不得被叙事采信
-6. **失败即失败**：检定失败时叙事不得出现成功语义关键词（"成功""相信你""答应你""被说服""击中"等，按规则系统结果反向匹配）
-7. **角色知识闭环**：调查员当前不具备的技能 / 学识不得被 GM 用作成功判定的理由
-8. **失败收束阻断**：调查员死亡 / SAN=0 / 触发硬收束时，必须输出尸检页或结局页，并阻止后续自由输入直至玩家选择"载入 / 绑定新调查员 / 退出"
-
-### 端到端验证
-- **黄金路径**：完成内置剧本主线，预期时长 60-90 分钟
-- **崩溃测试**：玩家故意做奇葩行为（自杀、烧关键 NPC、不停存读档），系统不崩
-- **一致性测试**：同一存档读取两次，状态完全相同
-
-### 演示就绪标志
-- 录一段 5 分钟视频：创建角色 → 进入第一个场景 → 完成一次技能检定 → 与 NPC 对话 → 触发剧情 → 存档退出 → 读档继续
-
----
-
-## 12. 下一步
-
-需求文档确认后，下一阶段产物：
-1. **技术 Spike**：单独验证"LLM + Tool Use 严格遵循 §11 GM 行为 SLA 清单"的可行性（1-2 天）
-2. 详细的规则引擎设计文档（W1 启动前）
-3. 内置剧本《雾港疑案》原版的骨架文档已挪至 W0，YAML 落地放在 W5
-
----
-
-## 附录 A：参考资料
-
-- CoC 7e Quick-Start Rules（Chaosium 官方免费 PDF）
-- Anthropic Tool Use 文档
-- textual 框架文档
-- 参考项目：FriendsAndFables、AI Roguelite（产品形态对照，非代码复用）
+- [README](README.md)
+- [Architecture overview](specs/00-architecture.md)
+- [Scenario and triggers](specs/05-scenario-and-triggers.md)
+- [Orchestrator and TUI](specs/06-orchestrator-and-tui.md)
+- [Fog Harbor canon](specs/08-fog-harbor-canon.md)

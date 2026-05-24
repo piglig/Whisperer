@@ -1,291 +1,289 @@
 # Whisperer
 
-> 让 LLM 当跑团 GM，让代码当裁判。
-> *An LLM-driven, single-player Cthulhu-flavored TRPG simulator with deterministic rules.*
+Whisperer is a local, single-player investigative TRPG engine. An LLM plays the
+GM, while Go code owns dice, skills, sanity, combat, state transitions, scenario
+triggers, playtest verification, and replay debugging.
 
-[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](#测试--质量)
-[![Coverage](https://img.shields.io/badge/coverage-%3E85%25-brightgreen)](#测试--质量)
+The current bundled scenario is **Fog Harbor** (`fog_harbor`), an original
+Cthulhu-flavored mystery built around deterministic d100 mechanics.
 
-```
-┌─ 雾港疑案 · 第 7 回合 · night ─────────────────────────────┐
-│ 你蹲在码头边，潮水正在退去。桩柱根部夹着一块湿透的布料——     │
-│ 海莲娜形容露西失踪夜穿的就是同样的花纹。你把它装进证物袋，   │
-│ 海风像在你耳边低语。                                       │
-│                                                           │
-│ [Spot Hidden 60 → 47 success]                             │
-│ [SAN 60 → 59 (-1)]                                        │
-│                                                           │
-│ > 我把布料拿给海莲娜看_                                     │
-└───────────────────────────────────────────────────────────┘
-```
-*↑ 录屏占位 — `docs/demo.cast` 上线后改 asciinema*
+> Whisperer is an unofficial fan project. *Call of Cthulhu* is owned by
+> Chaosium Inc. This repository is not affiliated with or endorsed by Chaosium.
+> It does not redistribute published Chaosium scenarios, art, or stat blocks.
 
----
+## Highlights
 
-## 这是什么
+- **Deterministic rules**: dice, HP, SAN, skills, clues, item movement, and
+  endings are resolved by Go tools, not invented by the model.
+- **Scenario authoring loop**: `scenario lint`, deterministic playtests, and
+  content gates keep scenarios shippable.
+- **Observability-first debugging**: every turn can be written to JSONL,
+  replayed in text, exported to an interactive HTML viewer, or converted into a
+  playtest script.
+- **LLM guardrails**: structural SLA checks and optional LLM-as-judge checks
+  catch missing tool calls, knowledge leaks, failed-roll contradictions, and
+  forced ending conditions.
+- **Replayability**: Fog Harbor ships with variants, multiple endings, staged
+  clues, and cross-run meta memory.
 
-**Whisperer 是一个跑团 GM 程序**：你在终端里输入"我向酒馆老板娘打听"，
-它扮演整个克苏鲁式小镇——叙事、NPC 对话、氛围营造由 LLM 驱动；
-**骰子、技能检定、SAN 损失、HP 流转一律由 Go 代码裁决**，LLM 不能私自改数。
+## Project Status
 
-它不是另一个"无限续写互动小说"。玩家说"我杀了龙"，AI 不会配合"你杀了龙"——
-而是按 d100 规则掷骰、判定、按真实结果叙述。
+Whisperer is under active development. The codebase intentionally does not
+preserve compatibility while the core architecture is still being shaped.
 
-**3 句话讲清差别**：
-- ⚖️ **规则确定性**：骰子 / 技能 / SAN / 战斗全在 Go；LLM 只能调 tool，不能改数值
-- 🧠 **NPC 持久化**：子代理 + 向量记忆 + 关键词解锁知识，跨回合不漂移
-- 🎲 **重开性 ≥ 10 局**：3 个 variant × 5 结局 × 跨周目"似曾相识" meta
+Primary development lanes:
 
-> **Fan disclaimer**: Whisperer is an unofficial fan project. *Call of Cthulhu*® is © Chaosium Inc.
-> This project is not affiliated with or endorsed by Chaosium. No published Chaosium content
-> (printed scenarios, illustrations, NPC stat blocks from books) is redistributed; only
-> public-domain rule mechanics (d100, generic skill names) and original scenarios are used.
+| Lane | Command surface | Purpose |
+|---|---|---|
+| Runtime | `whisperer` | Player-facing TUI game loop |
+| Authoring | `whisperer scenario lint|playtest|verify` | Scenario validation and content gates |
+| Observability | `whisperer e2e`, `whisperer replay` | LLM validation, trace review, reports |
 
----
+## Requirements
 
-## 安装
+- Go 1.25.8 or newer
+- One supported LLM provider key for real gameplay
+- Optional OpenAI-compatible embedding provider for semantic memory
 
-> 多平台二进制 / Homebrew / Scoop 在 Phase 3 (release pipeline) 上线。当前从源码构建：
+Supported LLM providers:
+
+- Anthropic
+- OpenRouter
+- OpenAI
+- Grok / xAI
+- Gemini
+
+## Installation
+
+Build from source:
 
 ```bash
-git clone https://github.com/piglig/Whisperer.git && cd Whisperer
+git clone https://github.com/piglig/Whisperer.git
+cd Whisperer
 go build -o whisperer ./cmd/whisperer
 ./whisperer --help
 ```
 
-### LLM provider
-
-支持 Anthropic、OpenRouter、OpenAI、Grok、Gemini：
+The project also includes a first-run setup wizard:
 
 ```bash
-# Anthropic
+./whisperer init
+```
+
+## Configuration
+
+Whisperer reads configuration from:
+
+- `$XDG_CONFIG_HOME/whisperer/config.toml`
+- `$HOME/.config/whisperer/config.toml`
+- `%APPDATA%/whisperer/config.toml` on Windows
+- `--config /path/to/config.toml`
+
+Precedence is:
+
+```text
+CLI flags > environment variables > config file > built-in defaults
+```
+
+API keys should be provided through environment variables, not config files:
+
+```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-./whisperer
-
-# OpenRouter
 export OPENROUTER_API_KEY=sk-or-...
-./whisperer --provider openrouter
-
-# OpenAI
 export OPENAI_API_KEY=sk-...
-./whisperer --provider openai
-
-# Grok / xAI
 export XAI_API_KEY=xai-...
-./whisperer --provider grok
-
-# Gemini
 export GEMINI_API_KEY=...
+```
+
+See [docs/example-config.toml](docs/example-config.toml) for a complete config
+file with comments.
+
+## Quick Start
+
+Run the default TUI:
+
+```bash
+./whisperer
+```
+
+Choose a provider explicitly:
+
+```bash
+./whisperer --provider openai
+./whisperer --provider openrouter
 ./whisperer --provider gemini
 ```
 
-`--provider` 不指定时自动探测：仅存在一个 provider key 时自动选择；多个或都没有时默认 Anthropic。
-`--api-key <k>` 显式覆盖。
+Create a deterministic run for debugging:
 
-### 语义记忆与 judge
+```bash
+./whisperer --scenario fog_harbor --variant calvin_directs --seed 42
+```
 
-真实游玩默认启用 OpenAI-compatible embedding 作为长期记忆检索：
+Use a different investigator template:
+
+```bash
+./whisperer --investigator-template private_eye
+./whisperer --investigator-template doctor
+```
+
+Resume a save:
+
+```bash
+./whisperer --save <save-id>
+```
+
+## Runtime Controls
+
+The TUI centers the case board and actionable choices. Numbered actions can be
+selected directly, while free-form input remains available.
+
+Common slash commands:
+
+| Command | Description |
+|---|---|
+| `/talk <NPC>` | Address a specific NPC |
+| `/all <text>` | Speak to everyone present |
+| `/hint` | Request a non-spoiler nudge |
+| `/bind <name> <occupation>` | Bind a replacement investigator after death |
+| `/help` | Show in-game help |
+
+Blocked actions are reported through a structured decision object containing a
+reason code, player-facing explanation, debug reason, required clues, and
+suggested recovery actions.
+
+## Authoring Commands
+
+Lint scenario structure:
+
+```bash
+./whisperer scenario lint --scenario fog_harbor
+./whisperer scenario lint --all
+./whisperer scenario lint --scenario fog_harbor --json
+```
+
+Run deterministic playtests:
+
+```bash
+./whisperer scenario playtest --scenario fog_harbor --path mainline
+./whisperer scenario playtest --scenario fog_harbor --all
+./whisperer scenario playtest --scenario fog_harbor --all --json
+```
+
+Run the full content gate:
+
+```bash
+./whisperer scenario verify --scenario fog_harbor
+./whisperer scenario verify --scenario fog_harbor --json
+```
+
+Authoring adapters live behind `internal/authoring.ScenarioAdapter`. Adding a
+new scenario should not require adding a new CLI command.
+
+## Observability Commands
+
+Run a real LLM e2e validation without launching the TUI:
+
+```bash
+./whisperer e2e --provider openai --input "我环顾码头四周"
+./whisperer e2e \
+  --inputs-file cmd/whisperer/e2e_scripts/fog_harbor_mainline.txt \
+  --turns 25 \
+  --enable-judge
+```
+
+Replay a trace:
+
+```bash
+./whisperer replay runs
+./whisperer replay --turn 7 runs/<save-id>/<session>.jsonl
+./whisperer replay --html tmp/replay.html runs/<save-id>/<session>.jsonl
+./whisperer replay --export-script tmp/playtest.txt runs/<save-id>/<session>.jsonl
+./whisperer replay --turn 7 --mark bad,misjudge --note "NPC contradicted a clue" runs/<save-id>/<session>.jsonl
+```
+
+Replay output includes player input, GM output, tool calls, SLA checks, judge
+checks, state diff, endings, blocked-action explanations, and annotations.
+
+## Semantic Memory and Judge
+
+Enable OpenAI-compatible embeddings:
 
 ```bash
 export OPENAI_API_KEY=sk-...
 ./whisperer --embedder openai --embedder-model text-embedding-3-small
 ```
 
-使用 Voyage 或其他兼容端点：
+Use another compatible endpoint:
 
 ```bash
 export VOYAGE_API_KEY=...
-./whisperer --embedder openai_compat \
+./whisperer \
+  --embedder openai_compat \
   --embedder-base-url https://api.voyageai.com/v1 \
   --embedder-model voyage-3-large \
   --embedder-api-key-env VOYAGE_API_KEY
 ```
 
-也可以用 `--embedder-api-key <k>` 显式覆盖环境变量。离线开发可显式 `--embedder fake`；
-不需要记忆时用 `--embedder off`。NPC 一致性与知识边界的
-语义复核可用 `--enable-judge` 开启，默认复用 helper 模型。
-
----
-
-## Quickstart
-
-三条主链路：
-
-- **Runtime**：`./whisperer` 进入玩家游玩链路
-- **Authoring**：`./whisperer scenario lint|playtest|verify` 做剧本验收
-- **Observability**：`./whisperer e2e` / `./whisperer replay` 做复盘调试
+Useful development modes:
 
 ```bash
-# 默认：自动建档 + 记者模板调查员 + fog_harbor 剧本 + 加权随机选 variant
-./whisperer
-
-# 使用其他快速模板
-./whisperer --investigator-template=private_eye
-./whisperer --investigator-template=doctor
-
-# 强制选某 variant + 固定种子（便于回放调试）
-./whisperer --variant=calvin_directs --seed=42
-
-# 续读已有存档
-./whisperer --save <save-id>
-
-# 检查内置剧本的结构与可玩性（不需要 API key）
-./whisperer scenario lint --scenario fog_harbor
-./whisperer scenario lint --all
-./whisperer scenario lint --scenario fog_harbor --json
-
-# 不调 LLM 的雾港动态验收
-./whisperer scenario playtest --scenario fog_harbor --path mainline
-./whisperer scenario playtest --scenario fog_harbor --all --json
-
-# 一键健康检查：剧本 lint + 雾港全路径自动验收 + 内容门槛
-./whisperer scenario verify --scenario fog_harbor
-./whisperer scenario verify --scenario fog_harbor --json
-
-# 调真实 LLM 的端到端验收（不启动 TUI）
-./whisperer e2e --provider openai --input "我环顾码头四周"
-./whisperer e2e --inputs-file cmd/whisperer/e2e_scripts/fog_harbor_mainline.txt --turns 25 --enable-judge
-
-# 本地回放 trace：可传 JSONL 文件，或传 trace 目录自动打开最新记录
-./whisperer replay runs
-./whisperer replay --turn 7 runs/<save-id>/<session>.jsonl
-./whisperer replay --html tmp/replay.html runs/<save-id>/<session>.jsonl
-./whisperer replay --export-script tmp/playtest.txt runs/<save-id>/<session>.jsonl
-./whisperer replay --turn 7 --mark bad,misjudge --note "NPC 台词前后矛盾" runs/<save-id>/<session>.jsonl
+./whisperer --embedder fake
+./whisperer --embedder off
+./whisperer --enable-judge
 ```
 
-进入 TUI 后首先看 **案件板 / 可行动项**：它会列出当前目标、地点、阶段和 1-5 个可执行行动。
-按数字可把行动填入输入框，空输入直接 Enter 会执行当前选中的行动；自然语言仍可作为补充。
-每回合结束后，故事卷轴会追加“回合复盘”，解释本回合行动、状态变化、骰子/工具裁定和拦截原因。
+## Repository Layout
 
-常用命令：
-
-| 命令 | 作用 |
-|---|---|
-| `/talk <NPC>` | 显式指定 NPC 对话 |
-| `/all <话>` | 对全场说 |
-| `/hint` | 卡住时让 GM 给环境/NPC 暗示（不剧透） |
-| `/bind <名> <职业>` | 调查员死亡后接续新角色到本剧本 |
-| `/help` | 命令帮助 |
-
----
-
-## 当前剧本：《雾港疑案》
-
-一桩边远港口的失踪案。表面是少女露西的母亲求助，背后是三十年的契约。
-
-- **6 个调查地点**（码头 / 酒馆 / 灯塔 / 巡警所 / 教堂 / 礁洞）
-- **9 个 NPC**，每位都有秘密 + 关键词解锁的隐藏知识
-- **16 条线索**，按 Tier 1（表层）/ Tier 2（共谋）/ Tier 3（神话）三层递进 —— 遵循
-  [Three Clue Rule](https://thealexandrian.net/wordpress/1118/roleplaying-games/three-clue-rule)：
-  每个关键结论 ≥ 3 条独立线索路径
-- **3 个 variant**（`vance_executes` / `calvin_directs` / `rourke_runs`）每局加权随机
-  选一个，**轮换"当代谁是执行者"而不破坏世界一致性**
-- **5 类结局**：`pact_broken`（完美）/ `solved`（标准成功）/ `flee_with_truth`（带证据撤离）/
-  `victim_dies`（救人失败）/ `dismissed`（被驱逐）；调查员死亡走系统级尸检页
-- **跨周目 meta**（`runs/meta.json`）：玩家通关后下局 NPC 会出现"似曾相识"反应
-
-完整剧本设定与真相手册：[`specs/08-fog-harbor-canon.md`](specs/08-fog-harbor-canon.md)。
-
----
-
-## 它怎么工作的
-
-```
-TUI (bubbletea)
-  ↓
-Orchestrator      RunTurn 推进单回合
-  ├── GMAgent (Sonnet)        tool-use 循环
-  ├── NPCAgent (Haiku)        单段 NPC 台词，独立 system prompt
-  ├── Tool Dispatcher         20+ 个 tool 桥接 rules / store / memory
-  ├── SLA Validator           4 条结构化 + 可选 LLM judge × 2
-  ├── Scenario Engine         YAML 剧本 + 触发器 + 三幕节奏 + drift 检测
-  └── Memory (chromem-go)     事件 / NPC / 线索 三集合向量库
-       ↑
-  Rules Engine (rules)        纯函数：d100 / 技能 / SAN / 对抗 / 战斗 / 成长
-  State Store  (store)        SQLite + 单文件存档（含 variant / meta）
-```
-
-设计准则与契约边界详见 [`specs/00-architecture.md`](specs/00-architecture.md)。
-
----
-
-## 项目布局
-
-```
+```text
 Whisperer/
-├── cmd/
-│   └── whisperer/                Runtime / Authoring / Observability 入口
+├── cmd/whisperer/          Runtime, Authoring, and Observability CLI
+├── docs/                   User-facing examples
 ├── internal/
-│   ├── rules/                    纯函数规则引擎
-│   ├── store/                    SQLite + repository
-│   ├── agent/                    LLM SDK adapters + GM/NPC agent + prompts
-│   ├── memory/                   chromem-go 三集合
-│   ├── authoring/                scenario lint / playtest / verify 抽象
-│   ├── director/                 通用 Director 节奏建议
-│   ├── replay/                   trace 回放模型 + HTML viewer
-│   ├── scenario/                 YAML 剧本 + 触发器 + variant + meta
-│   ├── orchestrator/             回合主循环 + tools + SLA + judge
-│   └── tui/                      bubbletea 前端
-├── specs/                        架构 spec + ADR + 剧本 canon
-└── runs/                         运行时 trace / meta（gitignored）
+│   ├── agent/              LLM providers, GM/NPC agents, cassettes
+│   ├── authoring/          Scenario adapter registry, playtests, gates
+│   ├── config/             TOML/env/flag configuration
+│   ├── director/           Scenario pacing and advice
+│   ├── fogharbor/          Fog Harbor adapter and path scripts
+│   ├── memory/             Semantic memory and embedders
+│   ├── orchestrator/       Turn loop, action decisions, SLA, tools
+│   ├── replay/             Trace document model and HTML viewer
+│   ├── rules/              Pure d100 rules
+│   ├── scenario/           YAML loader, variants, triggers, reports
+│   ├── store/              SQLite persistence
+│   └── tui/                Bubble Tea terminal UI
+├── specs/                  Architecture, subsystem references, ADRs
+└── runs/                   Local traces and meta state, gitignored
 ```
 
----
-
-## 测试 / 质量
+## Development
 
 ```bash
-make test    # go test -race ./...
-make cover   # 覆盖率，门槛 85%
 make build
-make lint    # vet + golangci-lint
+make test
+make cover
+make lint
 ```
 
-最近一次覆盖率：
+Equivalent direct commands:
 
-| 包 | 覆盖率 |
-|---|---|
-| rules | 91.2% |
-| store | 88.1% |
-| agent | 89.1% |
-| memory | 89.7% |
-| scenario | 89.8% |
-| orchestrator | 90.8% |
-| orchestrator/tools | 93.1% |
-| orchestrator/sla | 93.7% |
-| tui | 93.0% |
-| **整体** | **~90%** |
+```bash
+go build ./...
+go test ./...
+go test -race ./...
+go vet ./...
+```
 
----
+## Documentation
 
-## 路线图
-
-- ✅ v0.3.x — 引擎 + Fog Harbor v0.3.1（variant 角色站位 + Three Clue Rule + Anna）
-- 🔜 v0.4.0 — **工程成熟度**：CI / migrations (goose) / 结构化日志 (slog) / 真 embedder /
-  cost 计费 / OTEL spans / LLM 录放（go-vcr）
-- 🔜 v0.5.0 — **用户体验**：onboarding wizard / 友好错误 / i18n (CN+EN) / shell completion /
-  scenario 热加载
-- 🔜 v0.6.0 — **分发**：goreleaser 多平台 + Homebrew tap + Scoop bucket + 一行安装脚本
-- 🔜 v0.7.0+ — 内容与社区：第二/第三剧本 / scenario linter / 文档站 / asciinema demo
-
-详细路线图与决策记录：[`specs/00-architecture.md`](specs/00-architecture.md) +
-[`CHANGELOG.md`](CHANGELOG.md)。
-
----
-
-## 贡献
-
-欢迎 issue 与 PR。开发流程、commit 风格、剧本编写指南详见
-[`CONTRIBUTING.md`](CONTRIBUTING.md)。
-
-参与社区前请阅读 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)；
-发现安全问题请通过 [`SECURITY.md`](SECURITY.md) 描述的私下渠道报告。
-
----
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [Architecture overview](specs/00-architecture.md)
+- [Scenario authoring](specs/05-scenario-and-triggers.md)
+- [Fog Harbor canon](specs/08-fog-harbor-canon.md)
+- [Original product brief](llm-rpg-cheerful-moonbeam.md)
 
 ## License
 
-[Apache License 2.0](LICENSE) © Whisperer contributors.
+Apache-2.0. See [LICENSE](LICENSE).

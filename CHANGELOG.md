@@ -1,110 +1,97 @@
 # Changelog
 
-All notable changes to Whisperer are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to Whisperer are documented here.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Whisperer is pre-1.0 and does not currently guarantee compatibility.
 
 ## [Unreleased]
 
 ### Added
-- Apache-2.0 LICENSE.
-- CONTRIBUTING / CODE_OF_CONDUCT / SECURITY documents.
-- GitHub issue & pull request templates.
-- README rewritten in product voice with Chaosium fan-material disclaimer.
-- CHANGELOG (this file).
-- OpenAI-compatible semantic memory embedder with CLI/config controls and explicit fake/off modes.
-- `--enable-judge` / `--judge-model` CLI and config switches for semantic SLA checks, including the real-LLM e2e validation harness.
-- TUI action board as the primary play surface, with numbered actionable choices above the story timeline.
-- Per-turn recap entries explaining player action, state changes, rule/tool rulings, and blocked-action reasons.
-- Unified real-LLM e2e validation under `whisperer e2e`; removed the legacy standalone e2e entrypoint.
-- `whisperer replay` local trace viewer for readable turn-by-turn debugging of player input, GM output, tools, SLA/judge checks, state changes, endings, exported playtest scripts, and turn annotations; `--html` exports an interactive single-file Replay Viewer.
-- Slimmed CLI into three primary chains: Runtime (`whisperer`), Authoring (`whisperer scenario lint|playtest|verify`), and Observability (`whisperer e2e|replay`); removed legacy runtime health flag and scenario-specific top-level commands.
-- Generic `internal/authoring` adapter registry and content gates so new scenarios can plug into playtest/verify without adding new CLI commands.
-- Structured action-block decisions with reason codes, player-facing explanations, debug reasons, required clues, and recovery suggestions for Runtime and Replay Viewer.
+
+- OpenAI-compatible semantic memory embedder with CLI/config controls and
+  explicit fake/off modes.
+- CLI/config switches for semantic SLA judge checks.
+- TUI action board as the primary play surface.
+- Per-turn recap entries for action, state changes, rulings, and blocked
+  reasons.
+- `whisperer e2e` for real-LLM validation without launching the TUI.
+- `whisperer replay` for text trace replay, playtest script export, turn
+  annotations, and single-file HTML replay viewer export.
+- `internal/authoring` adapter registry, deterministic playtest environment,
+  verify report assembly, and generic content gates.
+- Structured `ActionDecision` with reason codes, player-facing explanations,
+  debug reasons, required clues, and recovery suggestions.
+
+### Changed
+
+- CLI structure is organized into Runtime (`whisperer`), Authoring
+  (`whisperer scenario ...`), and Observability (`whisperer e2e|replay`).
+- Fog Harbor-specific command paths were folded into the generic scenario
+  authoring CLI.
+- Fog Harbor authoring code was narrowed to adapter, path scripts, and
+  scenario-specific gates.
+- Replay parsing and HTML rendering moved behind `internal/replay`.
+- Director logic moved out of Fog Harbor-specific code.
+
+### Removed
+
+- Legacy runtime health flag.
+- Legacy standalone e2e command.
+- Scenario-specific top-level CLI command.
+- General-purpose playtest and verify helpers from `internal/fogharbor`.
 
 ## [0.3.1] - 2026-05-13
 
-### Changed
-- **Variant system: role rotation instead of culprit swap.** All variants now
-  share the same world (30-year sacrificial pact, seven historical victims,
-  the same antagonist creature). Variants only swap *which current actor* is
-  the active executor — fixing the world-consistency hole the previous design
-  had (e.g. a "Marisa-revenge" variant that left seven historical bodies
-  unexplained). New variants: `vance_executes` (default) / `calvin_directs` /
-  `rourke_runs`.
-- Renamed trigger `vance_confronted` → `culprit_confronted` (the confronted
-  party varies by variant).
-- `victim_dies` ending now also fires on `npc_dead: anna`.
-
 ### Added
-- **Three Clue Rule redundancy.** Added `cloth_scrap` (harbor low-tide) /
-  `empty_graves` (church graveyard) / `clinic_supplies` (pub) so each key
-  conclusion has at least three independent clues.
-- **Anna Rivers** — a 9th NPC representing the *next* sacrificial victim, with
-  a `requires_phrases`-gated knowledge map and an `anna_taken` time-bomb
-  trigger (turn ≥ 22 + culprit not yet confronted + relation < 26 → kills
-  Anna). Gives the player a concrete face for the ticking clock instead of an
-  abstract "another disappearance is coming".
-- Auto-discovery triggers `cloth_at_low_tide`, `empty_graves_seen`, and
-  `anna_warns`.
+
+- Additional Fog Harbor clue redundancy:
+  - `cloth_scrap`
+  - `empty_graves`
+  - `clinic_supplies`
+- Anna Rivers as the next potential victim.
+- Auto-discovery triggers:
+  - `cloth_at_low_tide`
+  - `empty_graves_seen`
+  - `anna_warns`
+
+### Changed
+
+- Fog Harbor variants now rotate the active executor instead of replacing the
+  underlying culprit history.
+- `vance_confronted` was renamed to `culprit_confronted`.
+- `victim_dies` can fire when Anna dies.
 
 ## [0.3.0] - 2026-05-13
 
 ### Added
-- **Variant system** for replayability. Each playthrough randomly selects one
-  variant; the variant patches truth / NPC secrets / clue overrides / trigger
-  conditions / ending descriptions onto the base scenario, then merges into an
-  effective scenario. `--variant <id>` and `--seed <n>` CLI flags allow
-  forcing a deterministic selection.
-- **Cross-run meta** in `runs/meta.json`: tracks completed variants, endings,
-  and key truths discovered. Injected into the GM system prompt as "player
-  prior" so NPCs can react with subtle déjà-vu without spoiling anything.
-- **Keyword-gated NPC knowledge.** `SNPC.Knowledge` upgraded from `string` to a
-  structured map with `requires_phrases` + `reveal` + optional `san_loss`.
-  The NPC sub-agent decides whether the player's input triggers a reveal —
-  the engine doesn't keyword-match.
-- New scenario fields: `Scenario.Truth`, `SNPC.Secret`, `SClue.{Tier, Location,
-  Source, SanLoss}`.
-- `internal/scenario/{variant.go,meta.go,render.go}` plus tests.
-- Store schema migration: `saves.variant_id` column. Saves are now
-  variant-aware (re-merging on reload uses the persisted variant id).
+
+- Scenario variant system.
+- Cross-run meta state in `runs/meta.json`.
+- Keyword-gated NPC knowledge.
+- Scenario truth, NPC secrets, clue tiers, clue sources, and SAN loss metadata.
+- Store migration for `saves.variant_id`.
 
 ### Changed
-- `internal/scenario/data/fog_harbor.yaml` rewritten end-to-end. Six locations
-  (added church + lucy_room + reef_cave) / eight NPCs (added father_calvin,
-  deep_elder, lucy as plot anchor) / 12 clues across three tiers + one red
-  herring / nine triggers (including two time-pressure triggers
-  `helena_despairs` and `rourke_warns`) / five endings (`solved`,
-  `pact_broken`, `flee_with_truth`, `victim_dies`, `dismissed`). Investigator
-  death and indefinite insanity are handled by the orchestrator's existing
-  death page, not as YAML endings.
-- GM system prompt template gained sections for truth, NPC secrets, NPC
-  hidden-knowledge keyword tables, the tiered clue atlas, and player prior.
-- NPC system prompt template now receives `Self.Secret` and per-NPC
-  `Knowledge` rendering.
+
+- Fog Harbor was rewritten with expanded locations, NPCs, clues, triggers,
+  endings, and variants.
+- GM and NPC prompts now receive richer scenario truth and knowledge context.
 
 ## [0.1.0] - 2026-05-12
 
 ### Added
-- Initial commit: full W1–W7 implementation in one push.
-- `internal/rules` — pure dice / skill check / opposed / combat / sanity /
-  growth functions.
-- `internal/store` — SQLite persistence + single-file save format with
-  embedded `schema.sql`.
-- `internal/orchestrator/tools` — 20+ tools bridging rules / store / memory.
-- `internal/agent` — Anthropic SDK wrapper, GM (Sonnet) tool-use loop, NPC
-  (Haiku) sub-agent, prompt templates.
-- `internal/memory` — chromem-go event / NPC / clue collections.
-- `internal/scenario` — YAML loader, trigger engine, drift detector. Initial
-  Fog Harbor skeleton (4 loc / 5 NPC / 3 clues / 2 triggers / 3 endings).
-- `internal/orchestrator` — turn loop, four structural SLA validators,
-  optional Haiku LLM-as-judge for SLA #3 (NPC consistency) and #7 (knowledge
-  projection).
-- `internal/tui` — bubbletea terminal UI with `/bind`, `/hint`, `/talk`, and
-  `/all` slash commands.
-- W7 polish: complete impale rules, multi-investigator binding, autosave
-  checkpoint events.
-- `cmd/whisperer` CLI + original real-LLM end-to-end harness.
+
+- Initial runtime implementation.
+- Deterministic rules engine.
+- SQLite store.
+- LLM GM and NPC agent layer.
+- Tool dispatcher.
+- Semantic memory.
+- Scenario loader and trigger engine.
+- Orchestrator turn loop.
+- Bubble Tea TUI.
+- Initial Fog Harbor scenario.
 
 [Unreleased]: https://github.com/piglig/Whisperer/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/piglig/Whisperer/releases/tag/v0.3.1

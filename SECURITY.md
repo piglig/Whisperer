@@ -1,64 +1,76 @@
 # Security Policy
 
-## 受支持的版本
+## Supported Versions
 
-Whisperer 仍在 0.x，每个 minor 版本发布后只对**最新**版本提供安全修复。强烈建议
-使用最新版。
+Whisperer is a pre-1.0 project. Security fixes target the latest development
+line only.
 
-| 版本 | 受支持 |
+| Version | Supported |
 |---|---|
-| 0.3.x | ✅ |
-| < 0.3 | ❌ |
+| latest `main` / latest release | Yes |
+| older development snapshots | No |
 
-## 报告漏洞
+## Reporting a Vulnerability
 
-**请不要在公开 issue 里讨论安全漏洞。**
+Do not open a public issue for security vulnerabilities.
 
-通过 GitHub 的 [私密漏洞报告功能（Security Advisory）](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
-报告：
+Use GitHub private vulnerability reporting from the repository Security tab:
 
-1. 进入仓库的 [Security 标签](https://github.com/piglig/Whisperer/security)
-2. 点击 *Report a vulnerability*
-3. 填写漏洞详情、复现步骤、影响评估
+1. Open the repository on GitHub.
+2. Select **Security**.
+3. Choose **Report a vulnerability**.
+4. Include reproduction steps and impact.
 
-我们会在 **3 个工作日内**确认收到，**14 天内**给出初步评估，并与你协调修复
-计划与披露时间。
+Expected response:
 
-## 安全报告应当包含
+- acknowledgement within 3 business days
+- initial assessment within 14 days
+- coordinated fix and disclosure timeline when the report is valid
 
-- 受影响的组件（如 `internal/store`、`internal/orchestrator` 等）
-- 受影响的版本（如 `v0.3.1`）
-- 复现步骤——越具体越好
-- 影响范围（信息泄露 / 越权写入 / 拒绝服务 / 远程代码执行 / 凭据泄露 / etc）
-- 你能想到的修复或缓解方案（可选）
+## What to Include
 
-## 我们关心的威胁模型
+Please include:
 
-Whisperer 是单用户单进程的本地 TUI 工具，但仍有几个值得关注的攻击面：
+- affected component, package, command, or file format
+- affected version or commit
+- reproduction steps
+- impact assessment
+- logs or traces with secrets removed
+- suggested mitigation, if available
 
-1. **API key 泄露**：日志、trace、错误信息、上传的剧本/存档**绝不**应包含明文 key。
-   如果你发现 key 出现在任何文件或网络请求 body 中，这是 bug 也是安全问题。
-   现有防御（截至 v0.4.x）：
-   - **slog 字段名屏蔽**：任何 attr key 含 `key`/`token`/`secret` 自动 → `***`
-     （`internal/log/log.go`）
-   - **trace JSONL 落盘前正则抹除**：扫 `sk-ant-…` / `sk-or-…` / `sk-…` /
-     `Bearer …` / `eyJ…JWT` 等已知形态（`internal/secrets/redact.go`）
-   - **TOML 配置不接受 api_key 字段**——只能从环境变量或 `--api-key` 取，物理隔离
-     (`internal/config/config.go`)。
-2. **Prompt injection**：剧本 YAML、用户输入、NPC 知识表都会进入 LLM context；
-   恶意构造的剧本可能让 GM 越权执行 tool 或泄露其他 NPC 的 secret。
-3. **路径遍历**：剧本热加载（roadmap 中）从用户目录读 YAML；任何允许跨目录引用
-   或符号链接逃逸都是问题。
-4. **SQL 注入 / 反序列化**：当前所有查询都用占位符，但对外部贡献的代码要继续保持
-   这一约束。
-5. **依赖链漏洞**：Go 依赖通过 Dependabot 监控；遇到 CVE 我们会发布 patch 版本。
+## Threat Model
 
-## 我们暂时不视作安全问题的范围
+Whisperer is currently a local, single-user CLI/TUI application. Security work
+focuses on:
 
-- 把 LLM 输出的"幻觉"当事实接受 —— 这是 LLM 通用问题，非本项目范畴
-- 用户用自己的 key 发出超出预算的请求 —— 用户自负
-- TUI 渲染异常（颜色错乱、布局错位）—— 提常规 issue 即可
+- API key exposure in logs, traces, cassettes, error messages, and config files
+- prompt injection through scenario YAML, user input, NPC knowledge, and tool
+  arguments
+- path traversal in current or future user-provided scenario loading
+- unsafe deserialization or SQL injection
+- denial of service through unbounded trace, replay, or scenario inputs
+- dependency vulnerabilities
 
-## 致谢
+## Existing Safeguards
 
-我们会在 release notes 与（如允许）`SECURITY.md` 中列出负责任披露漏洞的报告者。
+- API keys are expected through environment variables or CLI flags, not config.
+- `internal/secrets` redacts known key and bearer-token shapes before trace
+  persistence.
+- structured logging masks sensitive attribute names.
+- cassette tests redact sensitive headers.
+- SQLite access goes through typed repository methods and parameterized queries.
+
+## Out of Scope
+
+The following are not handled as private security reports unless they expose a
+separate vulnerability:
+
+- ordinary LLM hallucinations
+- unexpected story outcomes
+- user-controlled API spend
+- terminal rendering glitches
+- spoilers from local files intentionally opened by the user
+
+## Recognition
+
+Valid reporters may be credited in release notes unless they request otherwise.
