@@ -1,5 +1,7 @@
 # Whisperer
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Whisperer is a local, single-player investigative TRPG engine. An LLM plays the
 GM, while Go code owns dice, skills, sanity, combat, state transitions, scenario
 triggers, playtest verification, and replay debugging.
