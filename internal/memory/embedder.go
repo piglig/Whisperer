@@ -2,9 +2,8 @@
 // orchestrator: upsert events / NPC profiles / clues into one of three
 // collections, query top-K by cosine similarity, persist to disk per save.
 //
-// embedder：当前只有 FakeEmbedder——基于 sha256 桶累加 + L2 归一化，无外部依赖。
-// 单剧本 9 NPC × 3 集合的规模下，向量化质量并非瓶颈；真正的语义 embedder
-// （OpenAI / Cohere / Ollama 等）等剧本扩到 5+ 再引入。
+// embedder：生产路径应使用真实语义 embedder；FakeEmbedder 仅用于测试、离线验收
+// 和显式开发配置。
 package memory
 
 import (
@@ -12,17 +11,66 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	chromem "github.com/philippgille/chromem-go"
 )
 
 // Embedder 是 chromem-go 的 EmbeddingFunc 别名，便于在 whisperer 内统一签名。
 type Embedder = chromem.EmbeddingFunc
 
+const (
+	DefaultOpenAIEmbeddingModel = "text-embedding-3-small"
+	DefaultOpenAIEmbeddingURL   = "https://api.openai.com/v1"
+)
+
 // FakeEmbedderDim 是 NewFakeEmbedder 默认输出维度。低维度足够测试用，
 // 同时让相似度差异容易在断言中放大。
 const FakeEmbedderDim = 32
+
+// NewOpenAIEmbedder 返回一个 OpenAI embeddings API 兼容的 embedder。baseURL 为空时
+// 使用官方 OpenAI API；传入 Voyage / 其他兼容端点时由调用方同时提供对应 key。
+func NewOpenAIEmbedder(apiKey, baseURL, model string) (Embedder, error) {
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, errors.New("memory.OpenAIEmbedder: api key is required")
+	}
+	if strings.TrimSpace(model) == "" {
+		model = DefaultOpenAIEmbeddingModel
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = DefaultOpenAIEmbeddingURL
+	}
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+		option.WithBaseURL(baseURL),
+	)
+	return func(ctx context.Context, text string) ([]float32, error) {
+		if strings.TrimSpace(text) == "" {
+			return nil, errors.New("memory.OpenAIEmbedder: empty input")
+		}
+		resp, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+			Input: openai.EmbeddingNewParamsInputUnion{
+				OfString: openai.String(text),
+			},
+			Model:          model,
+			EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("memory.OpenAIEmbedder: embed: %w", err)
+		}
+		if len(resp.Data) == 0 {
+			return nil, errors.New("memory.OpenAIEmbedder: empty response")
+		}
+		vec := make([]float32, len(resp.Data[0].Embedding))
+		for i, v := range resp.Data[0].Embedding {
+			vec[i] = float32(v)
+		}
+		return vec, nil
+	}, nil
+}
 
 // NewFakeEmbedder 返回一个确定性、无外部依赖的 embedder：
 //   - 对输入文本切 token（按非字母数字切分）

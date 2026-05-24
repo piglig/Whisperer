@@ -155,12 +155,13 @@ func TestModel_OpeningRendered(t *testing.T) {
 	assert.Contains(t, v, "开场白")
 	assert.Contains(t, v, "Whisperer")
 	assert.Contains(t, v, "任务简报")
+	assert.Contains(t, v, "案件板 / 可行动项")
 	assert.Contains(t, v, "行动流")
 	assert.Contains(t, v, "案件卡")
 	assert.Contains(t, v, "阶段 开局")
 	assert.Contains(t, v, "当前目标")
 	assert.Contains(t, v, "当前重点")
-	assert.Contains(t, v, "确认露西失踪的第一现场")
+	assert.Contains(t, v, "确认露西失踪前最后去了哪里")
 	assert.Contains(t, v, "查看码头公告栏")
 }
 
@@ -338,6 +339,51 @@ func TestFormatTurnSummary(t *testing.T) {
 	assert.Contains(t, out, "安娜危险")
 }
 
+func TestFormatTurnReview(t *testing.T) {
+	out := formatTurnReview(orchestrator.TurnResult{
+		Action: orchestrator.PlayerAction{Text: "查看公告栏"},
+		Decision: orchestrator.TurnDecision{
+			Intent: orchestrator.IntentInvestigate,
+			Action: orchestrator.PlayerAction{Text: "查看公告栏"},
+			Mechanics: []orchestrator.DecisionAction{{
+				Tool:    "roll_skill",
+				Success: true,
+				Detail:  `{"skill_name":"Spot Hidden","skill_value":60,"difficulty":"regular","roll":47,"threshold":60,"success":true}`,
+			}},
+			Checks: []orchestrator.DecisionCheck{{
+				Code:    "action_guard",
+				Passed:  false,
+				Message: "这个调查行动不属于当前地点。",
+			}},
+		},
+		Summary: orchestrator.TurnSummary{
+			NewClues: []orchestrator.SummaryClue{{ID: "cloth", Description: "湿布片"}},
+		},
+	})
+
+	assert.Contains(t, out, "回合复盘")
+	assert.Contains(t, out, "行动：调查 · 查看公告栏")
+	assert.Contains(t, out, "新线索：湿布片")
+	assert.Contains(t, out, "未执行：这个调查行动不属于当前地点。")
+	assert.Contains(t, out, "裁定：Spot Hidden")
+}
+
+func TestModel_ActionBoardIsPrimarySurface(t *testing.T) {
+	st, id := newTestStore(t)
+	m := New(context.Background(), &fakeRunner{saveID: id}, st, "开场白", testScenario())
+	updated, _ := m.Update(m.loadSnapshotCmd()())
+	m = updated.(Model)
+	m.width = 120
+	m.height = 30
+
+	v := m.View()
+
+	assert.Contains(t, v, "案件板 / 可行动项")
+	assert.Contains(t, v, "选择行动")
+	assert.Contains(t, v, "Enter 执行")
+	assert.Contains(t, v, "1. 调查 · 查看公告栏上的失踪启事")
+}
+
 func TestFormatTurnRuling(t *testing.T) {
 	out := formatTurnRuling(orchestrator.TurnDecision{
 		Mechanics: []orchestrator.DecisionAction{
@@ -461,6 +507,7 @@ func TestModel_ViewUsesWorkbenchLayoutWithCaseRail(t *testing.T) {
 	assert.Contains(t, v, "Whisperer 案件桌")
 	assert.Contains(t, v, "任务简报")
 	assert.Contains(t, v, "建议行动")
+	assert.Contains(t, v, "案件板 / 可行动项")
 	assert.Contains(t, v, "行动流")
 	assert.Contains(t, v, "案件卡")
 	assert.Contains(t, v, "地点")

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zhuzhenwu/whisperer/internal/fogharbor"
+	"github.com/zhuzhenwu/whisperer/internal/director"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 )
@@ -87,7 +87,7 @@ func (m Model) actionChoices() []suggestedAction {
 		Clues:    m.clues,
 		Limit:    5,
 	})
-	return fogharbor.RankActions(m.directorAdvice(), actions)
+	return director.RankActions(m.directorAdvice(), actions)
 }
 
 func (m Model) foundClueSet() map[string]bool {

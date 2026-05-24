@@ -1,6 +1,5 @@
-# fog_harbor v0.3.0 失败收束：dismissed
+# fog_harbor 失败收束：dismissed
 # 玩家与 rourke 长官公开对抗，不收集 rourke_bribe；turn_ge:8 触发 rourke_warns。
-# 期望结局：dismissed（rourke 关系 ≤ -20 → 驱逐令）
 
 # Turn 1 抵达
 我是记者 Lyra，下船第一件事就是去巡警所——我对地方警力一向直接。

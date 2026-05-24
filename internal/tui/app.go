@@ -31,6 +31,7 @@ type EntryKind int
 const (
 	EntryGM EntryKind = iota
 	EntryPlayer
+	EntryReview
 	EntrySystem
 	EntryError
 	EntryEnding

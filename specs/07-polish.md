@@ -94,7 +94,7 @@ type HaikuJudge struct { ... }
 放在仓库根 `README.md`，包含：
 - 1-2 段项目介绍 + 与 AI Dungeon 的差异
 - 架构图（复用 specs/00-architecture.md 的简化版）
-- 运行说明：依赖、go build、ANTHROPIC_API_KEY、--smoke、--enable-judge（W7 之后接入）
+- 运行说明：依赖、go build、ANTHROPIC_API_KEY、`scenario verify`、`e2e --enable-judge`
 - 已实现 / 未实现清单（与需求文档 Goals/Non-Goals 对齐）
 
 ## 测试

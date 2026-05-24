@@ -12,9 +12,9 @@ func TestNew_LoadsBothLocales(t *testing.T) {
 		tr, err := New(lang)
 		require.NoError(t, err, lang)
 		require.NotNil(t, tr)
-		// 任一语言都应该能拿到 cli.smoke_passed
-		got := tr.T("cli.smoke_passed")
-		assert.NotContains(t, got, "missing", "T should resolve cli.smoke_passed under %q", lang)
+		// 任一语言都应该能拿到 cli.verify_passed
+		got := tr.T("cli.verify_passed")
+		assert.NotContains(t, got, "missing", "T should resolve cli.verify_passed under %q", lang)
 		assert.NotContains(t, got, "i18n error")
 	}
 }
@@ -22,9 +22,9 @@ func TestNew_LoadsBothLocales(t *testing.T) {
 func TestNew_FallsBackOnUnknownLang(t *testing.T) {
 	tr, err := New("xx-FAKE")
 	require.NoError(t, err)
-	got := tr.T("cli.smoke_passed")
-	// 应该回退 zh-CN 的"冒烟检查通过"
-	assert.Contains(t, got, "冒烟检查")
+	got := tr.T("cli.verify_passed")
+	// 应该回退 zh-CN 的"验收检查通过"
+	assert.Contains(t, got, "验收检查")
 }
 
 func TestT_RendersTemplateData(t *testing.T) {

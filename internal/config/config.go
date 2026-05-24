@@ -28,6 +28,16 @@ type Config struct {
 	Model       string `toml:"model"`
 	ModelHelper string `toml:"model_helper"`
 
+	// 语义记忆 embedding。API key 不进 TOML；EmbedderAPIKeyEnv 指向环境变量名。
+	Embedder          string `toml:"embedder"`
+	EmbedderModel     string `toml:"embedder_model"`
+	EmbedderBaseURL   string `toml:"embedder_base_url"`
+	EmbedderAPIKeyEnv string `toml:"embedder_api_key_env"`
+
+	// LLM-as-judge，默认关闭；开启后使用 helper LLM 检查 NPC 一致性、知识投射等。
+	EnableJudge bool   `toml:"enable_judge"`
+	JudgeModel  string `toml:"judge_model"`
+
 	// 剧本与存档
 	Scenario string `toml:"scenario"`
 	Save     string `toml:"save"`
@@ -57,16 +67,20 @@ type Config struct {
 // Defaults 返回内置默认值。它们也会作为 koanf 的第一层 provider 参与合并。
 func Defaults() Config {
 	return Config{
-		Provider:      "",
-		Scenario:      "fog_harbor",
-		DBPath:        "whisperer.db",
-		MemDir:        "mem",
-		MetaPath:      "runs/meta.json",
-		LogFormat:     "text",
-		LogLevel:      "info",
-		LLMTimeout:    120 * time.Second,
-		TraceDir:      "runs",
-		LLMTimeoutStr: "120s",
+		Provider:          "",
+		Embedder:          "openai",
+		EmbedderModel:     "text-embedding-3-small",
+		EmbedderBaseURL:   "https://api.openai.com/v1",
+		EmbedderAPIKeyEnv: "OPENAI_API_KEY",
+		Scenario:          "fog_harbor",
+		DBPath:            "whisperer.db",
+		MemDir:            "mem",
+		MetaPath:          "runs/meta.json",
+		LogFormat:         "text",
+		LogLevel:          "info",
+		LLMTimeout:        120 * time.Second,
+		TraceDir:          "runs",
+		LLMTimeoutStr:     "120s",
 	}
 }
 
@@ -130,16 +144,22 @@ func Load(path string) (*Config, error) {
 func defaultMap() map[string]interface{} {
 	d := Defaults()
 	return map[string]interface{}{
-		"provider":          d.Provider,
-		"scenario":          d.Scenario,
-		"db_path":           d.DBPath,
-		"memory_dir":        d.MemDir,
-		"meta_path":         d.MetaPath,
-		"log_format":        d.LogFormat,
-		"log_level":         d.LogLevel,
-		"llm_timeout":     d.LLMTimeoutStr,
-		"llm_max_retries": 3,
-		"trace_dir":       d.TraceDir,
+		"provider":             d.Provider,
+		"embedder":             d.Embedder,
+		"embedder_model":       d.EmbedderModel,
+		"embedder_base_url":    d.EmbedderBaseURL,
+		"embedder_api_key_env": d.EmbedderAPIKeyEnv,
+		"enable_judge":         d.EnableJudge,
+		"judge_model":          d.JudgeModel,
+		"scenario":             d.Scenario,
+		"db_path":              d.DBPath,
+		"memory_dir":           d.MemDir,
+		"meta_path":            d.MetaPath,
+		"log_format":           d.LogFormat,
+		"log_level":            d.LogLevel,
+		"llm_timeout":          d.LLMTimeoutStr,
+		"llm_max_retries":      3,
+		"trace_dir":            d.TraceDir,
 	}
 }
 
@@ -151,6 +171,18 @@ func envKey(key, value string) (string, interface{}) {
 		return "model", value
 	case "MODEL_HELPER":
 		return "model_helper", value
+	case "EMBEDDER":
+		return "embedder", value
+	case "EMBEDDER_MODEL":
+		return "embedder_model", value
+	case "EMBEDDER_BASE_URL":
+		return "embedder_base_url", value
+	case "EMBEDDER_API_KEY_ENV":
+		return "embedder_api_key_env", value
+	case "ENABLE_JUDGE":
+		return "enable_judge", value
+	case "JUDGE_MODEL":
+		return "judge_model", value
 	case "SCENARIO":
 		return "scenario", value
 	case "SAVE":

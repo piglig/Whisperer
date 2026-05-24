@@ -1,5 +1,5 @@
 // Package log 包装标准库 log/slog，提供：
-//   - 文本（TUI / 开发）与 JSON（CI / 生产 / e2esmoke 机器解析）两种 handler
+//   - 文本（TUI / 开发）与 JSON（CI / 生产 / e2e 机器解析）两种 handler
 //   - 自动屏蔽 API key / token / secret 类字段
 //   - 简洁的全局 SetDefault 入口
 //

@@ -13,6 +13,9 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 	if res.Narrative != "" {
 		m.log = append(m.log, logEntry{kind: EntryGM, text: res.Narrative})
 	}
+	if review := formatTurnReview(res); review != "" {
+		m.log = append(m.log, logEntry{kind: EntryReview, text: review})
+	}
 	if ruling := formatTurnRuling(res.Decision); ruling != "" {
 		m.log = append(m.log, logEntry{kind: EntrySystem, text: ruling})
 	}
@@ -51,6 +54,77 @@ func (m *Model) appendTurnResult(res orchestrator.TurnResult) {
 		})
 	}
 	m.storyOffset = 0
+}
+
+func formatTurnReview(res orchestrator.TurnResult) string {
+	lines := []string{"回合复盘"}
+	action := strings.TrimSpace(res.Decision.Action.Text)
+	if action == "" {
+		action = strings.TrimSpace(res.Action.Text)
+	}
+	if action == "" {
+		action = strings.TrimSpace(res.Decision.PlayerInput)
+	}
+	if action != "" {
+		lines = append(lines, "- 行动："+actionKindLabel(res.Decision.Intent)+" · "+action)
+	}
+	if !res.Summary.Empty() {
+		lines = append(lines, reviewSummaryLines(res.Summary)...)
+	}
+	for _, check := range res.Decision.Checks {
+		if check.Passed || strings.TrimSpace(check.Message) == "" {
+			continue
+		}
+		lines = append(lines, "- 未执行："+check.Message)
+	}
+	if len(res.Decision.Mechanics) > 0 {
+		count := 0
+		for _, mechanic := range res.Decision.Mechanics {
+			if line := formatMechanic(mechanic); line != "" {
+				lines = append(lines, "- 裁定："+line)
+				count++
+			}
+			if count >= 2 {
+				break
+			}
+		}
+	}
+	if len(lines) == 1 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
+}
+
+func reviewSummaryLines(summary orchestrator.TurnSummary) []string {
+	lines := []string{}
+	if summary.LocationChange != nil {
+		lines = append(lines, fmt.Sprintf("- 位置：%s → %s", nonEmpty(summary.LocationChange.From, "?"), nonEmpty(summary.LocationChange.To, "?")))
+	}
+	if summary.TimeChange != nil {
+		lines = append(lines, fmt.Sprintf("- 时间：%s → %s", displayTimeOfDay(store.TimeOfDay(summary.TimeChange.From)), displayTimeOfDay(store.TimeOfDay(summary.TimeChange.To))))
+	}
+	if summary.StageChange != nil {
+		lines = append(lines, fmt.Sprintf("- 阶段：%s → %s", displayStage(summary.StageChange.From), displayStage(summary.StageChange.To)))
+	}
+	for _, clue := range summary.NewClues {
+		lines = append(lines, "- 新线索："+nonEmpty(clue.Description, clue.ID))
+	}
+	for _, npc := range summary.NPCChanges {
+		if npc.AliveChanged {
+			state := "存活"
+			if !npc.AliveTo {
+				state = "死亡"
+			}
+			lines = append(lines, fmt.Sprintf("- 人物：%s 状态变为%s", nonEmpty(npc.Name, npc.ID), state))
+		}
+		if npc.RelationFrom != npc.RelationTo {
+			lines = append(lines, fmt.Sprintf("- 关系：%s %+d → %+d", nonEmpty(npc.Name, npc.ID), npc.RelationFrom, npc.RelationTo))
+		}
+	}
+	for _, threat := range summary.ThreatChanges {
+		lines = append(lines, fmt.Sprintf("- 风险：%s %s → %s", threat.Name, threat.From, threat.To))
+	}
+	return lines
 }
 
 func formatTurnSummary(summary orchestrator.TurnSummary) string {

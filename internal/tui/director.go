@@ -3,13 +3,13 @@ package tui
 import (
 	"strings"
 
-	"github.com/zhuzhenwu/whisperer/internal/fogharbor"
+	"github.com/zhuzhenwu/whisperer/internal/director"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
-func (m Model) directorAdvice() fogharbor.Advice {
-	return fogharbor.EvaluateAdvice(fogharbor.DirectorSnapshot{
+func (m Model) directorAdvice() director.Advice {
+	return director.EvaluateAdvice(director.Snapshot{
 		ScenarioID:     m.save.ScenarioID,
 		Stage:          m.currentStage(),
 		Turn:           m.save.TurnCount,
@@ -20,14 +20,15 @@ func (m Model) directorAdvice() fogharbor.Advice {
 		Threats:        m.threats,
 		AvailableNPCs:  m.npcs,
 		AvailableItems: m.items,
+		Objective:      m.currentObjective(),
 	})
 }
 
-func urgencyPrefix(urgency fogharbor.Urgency) string {
+func urgencyPrefix(urgency director.Urgency) string {
 	switch urgency {
-	case fogharbor.UrgencyCritical:
+	case director.UrgencyCritical:
 		return "[高危] "
-	case fogharbor.UrgencyWarning:
+	case director.UrgencyWarning:
 		return "[警告] "
 	default:
 		return ""

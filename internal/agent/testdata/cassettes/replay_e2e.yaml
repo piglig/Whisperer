@@ -17,7 +17,7 @@ interactions:
             Content-Type:
                 - application/json
         body: |
-            {"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":[{"type":"text","text":"replay smoke"}]}]}
+            {"model":"claude-haiku-4-5","max_tokens":256,"messages":[{"role":"user","content":[{"type":"text","text":"replay e2e"}]}]}
       response:
         proto: HTTP/1.1
         proto_major: 1
@@ -28,4 +28,4 @@ interactions:
             Content-Type:
                 - application/json
         body: |
-            {"id":"msg_replay_smoke_0001","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[{"type":"text","text":"replay ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":3}}
+            {"id":"msg_replay_e2e_0001","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[{"type":"text","text":"replay ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":3}}

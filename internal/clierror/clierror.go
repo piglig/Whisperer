@@ -1,8 +1,7 @@
 // Package clierror 把内部 error 翻译成面向终端用户的友好提示。
 //
 // 设计取舍：
-//   - 不返回新的错误类型，避免污染内部签名；只在 CLI 入口（cmd/whisperer/main.go
-//     的 fail() 与 e2esmoke 的 must()）调用 Format(err) 渲染输出。
+//   - 不返回新的错误类型，避免污染内部签名；只在 CLI 入口调用 Format(err) 渲染输出。
 //   - 已知错误模式按 errors.As / 字符串子串两路检测（SDK 错误类型 + 网络错误
 //     文本特征）。命中则查 i18n 表得到提示；未命中走 error.unknown 模板。
 //   - 不做任何 stack trace / 调试 dump——那是 slog debug 级别该出的。CLI 错误

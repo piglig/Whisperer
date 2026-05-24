@@ -234,7 +234,7 @@ endings:
 	assert.ErrorContains(t, err, "success|failure")
 }
 
-// Smoke test: 把 fog_harbor 的几条 condition 单独走一遍 evalCondition。
+// Verify test: 把 fog_harbor 的几条 condition 单独走一遍 evalCondition。
 func TestParse_FogHarborConditionsValid(t *testing.T) {
 	s, err := LoadBundled("fog_harbor")
 	require.NoError(t, err)

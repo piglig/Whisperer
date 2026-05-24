@@ -44,9 +44,19 @@ type Violation struct {
 
 // Report 是一次 Check 的汇总。
 type Report struct {
-	Violations   []Violation `json:"violations,omitempty"`
-	Passed       bool        `json:"passed"`
-	EndingForced bool        `json:"ending_forced,omitempty"`
+	Violations   []Violation  `json:"violations,omitempty"`
+	JudgeChecks  []JudgeCheck `json:"judge_checks,omitempty"`
+	Passed       bool         `json:"passed"`
+	EndingForced bool         `json:"ending_forced,omitempty"`
+}
+
+// JudgeCheck 是 LLM-as-judge 的可观测记录。结构化 SLA 仍由 Violations 决定是否
+// 阻塞；JudgeCheck 让 trace/replay 能解释语义审查是否运行、判定了什么。
+type JudgeCheck struct {
+	Kind    string `json:"kind"`
+	Target  string `json:"target,omitempty"`
+	Passed  bool   `json:"passed"`
+	Message string `json:"message,omitempty"`
 }
 
 // Snapshot 是 Validator 在 Check 时需要的上下文：销毁物品名（#4）、调查员状态（#8）。

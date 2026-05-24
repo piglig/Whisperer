@@ -38,6 +38,12 @@ trace_dir = "runs"
 meta_path = "runs/meta.json"
 log_format = "json"
 log_level = "debug"
+embedder = "openai_compat"
+embedder_model = "voyage-3-large"
+embedder_base_url = "https://api.voyageai.com/v1"
+embedder_api_key_env = "VOYAGE_API_KEY"
+enable_judge = true
+judge_model = "anthropic/claude-haiku-4-5"
 llm_max_retries = 5
 llm_timeout = "90s"
 `), 0o644))
@@ -47,6 +53,12 @@ llm_timeout = "90s"
 	assert.Equal(t, "openrouter", cfg.Provider)
 	assert.Equal(t, "anthropic/claude-sonnet-4-7", cfg.Model)
 	assert.Equal(t, int64(42), cfg.Seed)
+	assert.Equal(t, "openai_compat", cfg.Embedder)
+	assert.Equal(t, "voyage-3-large", cfg.EmbedderModel)
+	assert.Equal(t, "https://api.voyageai.com/v1", cfg.EmbedderBaseURL)
+	assert.Equal(t, "VOYAGE_API_KEY", cfg.EmbedderAPIKeyEnv)
+	assert.True(t, cfg.EnableJudge)
+	assert.Equal(t, "anthropic/claude-haiku-4-5", cfg.JudgeModel)
 	assert.Equal(t, 5, cfg.LLMMaxRetries)
 	assert.Equal(t, 90*time.Second, cfg.LLMTimeout)
 }
@@ -81,10 +93,14 @@ scenario = "fog_harbor"
 `), 0o644))
 	t.Setenv("WHISPERER_PROVIDER", "openrouter")
 	t.Setenv("WHISPERER_LOG_LEVEL", "warn")
+	t.Setenv("WHISPERER_EMBEDDER", "fake")
+	t.Setenv("WHISPERER_ENABLE_JUDGE", "true")
 	cfg, err := Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, "openrouter", cfg.Provider, "env should override toml")
 	assert.Equal(t, "warn", cfg.LogLevel)
+	assert.Equal(t, "fake", cfg.Embedder)
+	assert.True(t, cfg.EnableJudge)
 	assert.Equal(t, "fog_harbor", cfg.Scenario, "untouched fields stay")
 }
 

@@ -216,7 +216,7 @@ func TestNewAnthropic_OpenRouter(t *testing.T) {
 }
 
 func TestNewAnthropic_Empty(t *testing.T) {
-	// 不给凭据也能构造（实际调用才会失败），用于 smoke 路径
+	// 不给凭据也能构造（实际调用才会失败），用于离线验证路径
 	a := NewAnthropic(ClientConfig{})
 	assert.NotNil(t, a)
 }

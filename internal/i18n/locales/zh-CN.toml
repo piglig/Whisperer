@@ -1,7 +1,7 @@
 # Whisperer zh-CN 翻译目录。
 #
 # 键命名规约：domain.entity.action / domain.entity.field
-#   - cli.*       —— CLI 启动 / 退出 / smoke
+#   - cli.*       —— CLI 启动 / 退出 / verify
 #   - error.*     —— 用户可见的友好错误（clierror 包消费）
 #   - wizard.*    —— 首次运行向导
 #   - saves.*     —— save 管理子命令
@@ -9,8 +9,8 @@
 # 模板字段以 PascalCase（go-i18n 默认渲染）：{{.Provider}} / {{.SaveID}}
 
 # ===== cli =====
-[cli.smoke_passed]
-other = "冒烟检查通过：未发起任何 LLM 调用。"
+[cli.verify_passed]
+other = "验收检查通过：未发起任何 LLM 调用。"
 
 # ===== wizard =====
 [wizard.welcome_title]

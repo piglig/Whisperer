@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zhuzhenwu/whisperer/internal/authoring"
 )
 
 func TestLintBundledScenariosSingle(t *testing.T) {
@@ -26,4 +28,31 @@ func TestLintBundledScenariosAll(t *testing.T) {
 		ids[report.ScenarioID] = true
 	}
 	assert.True(t, ids["fog_harbor"])
+}
+
+func TestScenarioPlaytestAllReportsPass(t *testing.T) {
+	adapter, err := authoring.Adapter("fog_harbor")
+	require.NoError(t, err)
+	reports, err := adapter.RunAllPlaytests(t.Context())
+
+	require.NoError(t, err)
+	assert.False(t, authoring.HasFailures(reports))
+}
+
+func TestScenarioVerifyPasses(t *testing.T) {
+	adapter, err := authoring.Adapter("fog_harbor")
+	require.NoError(t, err)
+	report, err := adapter.Verify(t.Context())
+
+	require.NoError(t, err)
+	assert.True(t, report.Passed)
+	assert.False(t, report.ScenarioLint.HasErrors())
+	assert.False(t, authoring.HasFailures(report.Playtests))
+}
+
+func TestAuthoringAdapterRejectsUnsupportedScenarios(t *testing.T) {
+	_, err := authoring.Adapter("other_case")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unsupported scenario "other_case"`)
 }

@@ -11,17 +11,17 @@ import (
 	vcr "gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 )
 
-// TestCassette_ReplaySmoke 验证 cassette 录放整链路：
+// TestCassette_ReplayE2E 验证 cassette 录放整链路：
 //   - Recorder 在 ModeReplayOnly 下从 testdata 读 fixture
 //   - Anthropic SDK 经由 recorder 的 http.Client 发送请求
 //   - SDK 把 fixture 响应解析为 *agent.Message
 //   - cost 计算可以挂在结果上
 //
 // 这个测试 **不需要任何 API key**——它从手工录入的 fixture 重放。
-func TestCassette_ReplaySmoke(t *testing.T) {
+func TestCassette_ReplayE2E(t *testing.T) {
 	mode := vcr.ModeReplayOnly
 	rec, err := NewCassetteRecorder(CassetteOptions{
-		Path: "testdata/cassettes/replay_smoke",
+		Path: "testdata/cassettes/replay_e2e",
 		Mode: &mode,
 	})
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestCassette_ReplaySmoke(t *testing.T) {
 		Model:     anthropic.Model("claude-haiku-4-5"),
 		MaxTokens: 256,
 		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock("replay smoke")),
+			anthropic.NewUserMessage(anthropic.NewTextBlock("replay e2e")),
 		},
 	})
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestCassette_ReplaySmoke(t *testing.T) {
 func TestCassette_DefaultsToReplay(t *testing.T) {
 	t.Setenv("WHISPERER_VCR_RECORD", "")
 	rec, err := NewCassetteRecorder(CassetteOptions{
-		Path: "testdata/cassettes/replay_smoke",
+		Path: "testdata/cassettes/replay_e2e",
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rec.Stop() })

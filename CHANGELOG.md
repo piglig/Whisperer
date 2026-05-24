@@ -12,6 +12,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - GitHub issue & pull request templates.
 - README rewritten in product voice with Chaosium fan-material disclaimer.
 - CHANGELOG (this file).
+- OpenAI-compatible semantic memory embedder with CLI/config controls and explicit fake/off modes.
+- `--enable-judge` / `--judge-model` CLI and config switches for semantic SLA checks, including the real-LLM e2e validation harness.
+- TUI action board as the primary play surface, with numbered actionable choices above the story timeline.
+- Per-turn recap entries explaining player action, state changes, rule/tool rulings, and blocked-action reasons.
+- Unified real-LLM e2e validation under `whisperer e2e`; removed the legacy standalone e2e entrypoint.
+- `whisperer replay` local trace viewer for readable turn-by-turn debugging of player input, GM output, tools, SLA/judge checks, state changes, endings, exported playtest scripts, and turn annotations; `--html` exports an interactive single-file Replay Viewer.
+- Slimmed CLI into three primary chains: Runtime (`whisperer`), Authoring (`whisperer scenario lint|playtest|verify`), and Observability (`whisperer e2e|replay`); removed legacy runtime health flag and scenario-specific top-level commands.
+- Generic `internal/authoring` adapter registry and content gates so new scenarios can plug into playtest/verify without adding new CLI commands.
+- Structured action-block decisions with reason codes, player-facing explanations, debug reasons, required clues, and recovery suggestions for Runtime and Replay Viewer.
 
 ## [0.3.1] - 2026-05-13
 
@@ -95,7 +104,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/all` slash commands.
 - W7 polish: complete impale rules, multi-investigator binding, autosave
   checkpoint events.
-- `cmd/whisperer` CLI + `cmd/e2esmoke` real-LLM end-to-end harness.
+- `cmd/whisperer` CLI + original real-LLM end-to-end harness.
 
 [Unreleased]: https://github.com/piglig/Whisperer/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/piglig/Whisperer/releases/tag/v0.3.1

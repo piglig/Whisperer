@@ -14,6 +14,12 @@
 
 ## 模块布局
 
+工程按三条主链路组织，其他实验入口要么合并进这三条链路，要么移动到测试工具，要么删除：
+
+- **Runtime**：玩家游玩链路，`cmd/whisperer` 默认 TUI → `internal/orchestrator` → tools → `store/rules/scenario/memory`
+- **Authoring**：作者验收链路，`whisperer scenario lint|playtest|verify` → `internal/authoring` adapter registry → `internal/scenario` / `internal/director` / 剧本专属验收适配器
+- **Observability**：复盘调试链路，trace JSONL → `internal/replay` → `whisperer replay` text / HTML viewer / exported playtest script
+
 ```
 Whisperer/
 ├── cmd/whisperer/                 入口
@@ -29,7 +35,7 @@ Whisperer/
 └── runs/                          运行时日志（gitignore）
 ```
 
-依赖单向：`tui → orchestrator → {agent, store, memory, scenario} → rules`。
+Runtime 依赖单向：`tui → orchestrator → tools → {agent, store, memory, scenario} → rules`。
 `rules` 不引用任何其他 internal 包。
 
 ## 一回合（Turn）管线

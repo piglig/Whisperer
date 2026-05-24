@@ -2,8 +2,8 @@
 # Key conventions: see zh-CN.toml header.
 
 # ===== cli =====
-[cli.smoke_passed]
-other = "Smoke check passed: no LLM calls were made."
+[cli.verify_passed]
+other = "Verify check passed: no LLM calls were made."
 
 # ===== wizard =====
 [wizard.welcome_title]

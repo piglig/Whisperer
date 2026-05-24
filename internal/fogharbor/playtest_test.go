@@ -6,12 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zhuzhenwu/whisperer/internal/authoring"
 )
 
-func TestRunPlaytestMainline(t *testing.T) {
-	report, err := RunPlaytest(context.Background(), PlaytestOptions{
+func TestAdapterPlaytestMainline(t *testing.T) {
+	report, err := runPlaytest(context.Background(), authoring.PlaytestOptions{
 		VariantID: "vance_executes",
-		Path:      PathMainline,
+		Path:      string(pathMainline),
 	})
 
 	require.NoError(t, err)
@@ -22,8 +24,8 @@ func TestRunPlaytestMainline(t *testing.T) {
 	assert.Empty(t, report.MissingKeyClues)
 }
 
-func TestRunPlaytestFlee(t *testing.T) {
-	report, err := RunPlaytest(context.Background(), PlaytestOptions{Path: PathFlee})
+func TestAdapterPlaytestFlee(t *testing.T) {
+	report, err := runPlaytest(context.Background(), authoring.PlaytestOptions{Path: string(pathFlee)})
 
 	require.NoError(t, err)
 	assert.True(t, report.Passed, report.Notes)
@@ -31,20 +33,20 @@ func TestRunPlaytestFlee(t *testing.T) {
 	assert.NotContains(t, report.FiredTriggers, "reef_cave_open")
 }
 
-func TestRunPlaytestDismissed(t *testing.T) {
-	report, err := RunPlaytest(context.Background(), PlaytestOptions{Path: PathDismissed})
+func TestAdapterPlaytestDismissed(t *testing.T) {
+	report, err := runPlaytest(context.Background(), authoring.PlaytestOptions{Path: string(pathDismissed)})
 
 	require.NoError(t, err)
 	assert.True(t, report.Passed, report.Notes)
 	assert.Equal(t, "dismissed", report.EndingID)
 }
 
-func TestRunAllPlaytests(t *testing.T) {
-	reports, err := RunAllPlaytests(context.Background())
+func TestAdapterPlaytestSuite(t *testing.T) {
+	reports, err := runAllPlaytests(context.Background())
 
 	require.NoError(t, err)
 	require.Len(t, reports, 5)
-	assert.False(t, HasFailures(reports))
+	assert.False(t, authoring.HasFailures(reports))
 	seen := map[string]bool{}
 	for _, report := range reports {
 		seen[report.VariantID+"/"+report.Path] = true
@@ -55,23 +57,23 @@ func TestRunAllPlaytests(t *testing.T) {
 }
 
 func TestMarshalJSONReportsShape(t *testing.T) {
-	reports := []PlaytestReport{{ScenarioID: "fog_harbor", Path: "mainline", Passed: true}}
+	reports := []authoring.PlaytestReport{{ScenarioID: "fog_harbor", Path: "mainline", Passed: true}}
 
-	one, err := MarshalJSONReports(reports, false)
+	one, err := authoring.MarshalPlaytestJSON(reports, false)
 	require.NoError(t, err)
 	assert.Contains(t, string(one), `"scenario_id"`)
 	assert.NotContains(t, string(one), `[`+"\n")
 
-	many, err := MarshalJSONReports(reports, true)
+	many, err := authoring.MarshalPlaytestJSON(reports, true)
 	require.NoError(t, err)
 	assert.Contains(t, string(many), `[`+"\n")
 }
 
-func TestValidatePath(t *testing.T) {
-	path, err := ValidatePath("flee")
+func TestAdapterValidatePath(t *testing.T) {
+	path, err := validatePath("flee")
 	require.NoError(t, err)
-	assert.Equal(t, PathFlee, path)
+	assert.Equal(t, pathFlee, path)
 
-	_, err = ValidatePath("bad")
+	_, err = validatePath("bad")
 	assert.Error(t, err)
 }

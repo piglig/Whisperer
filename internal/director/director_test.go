@@ -1,4 +1,4 @@
-package fogharbor
+package director
 
 import (
 	"testing"
@@ -9,8 +9,24 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 )
 
+func TestEvaluateAdviceGenericObjective(t *testing.T) {
+	advice := EvaluateAdvice(Snapshot{
+		ScenarioID: "custom_case",
+		Objective: scenario.Objective{
+			Title: "找到失踪船员的最后目击者",
+			Steps: []string{"去码头询问守夜人", "检查船员登记册"},
+		},
+		Threats: []scenario.ThreatStatus{{ID: "storm", Name: "暴风", StateLabel: "逼近", Severity: 2}},
+	})
+
+	assert.Equal(t, "找到失踪船员的最后目击者", advice.PrimaryObjective)
+	assert.Equal(t, UrgencyWarning, advice.Urgency)
+	assert.Contains(t, advice.SuggestedAction, "码头")
+	assert.Contains(t, advice.Risk, "暴风")
+}
+
 func TestEvaluateAdviceOpeningEvidence(t *testing.T) {
-	advice := EvaluateAdvice(DirectorSnapshot{ScenarioID: "fog_harbor"})
+	advice := EvaluateAdvice(Snapshot{ScenarioID: "fog_harbor"})
 
 	assert.Equal(t, "确认露西失踪的第一现场", advice.PrimaryObjective)
 	assert.Equal(t, UrgencyNormal, advice.Urgency)
@@ -18,7 +34,7 @@ func TestEvaluateAdviceOpeningEvidence(t *testing.T) {
 }
 
 func TestEvaluateAdviceProtectAnna(t *testing.T) {
-	advice := EvaluateAdvice(DirectorSnapshot{
+	advice := EvaluateAdvice(Snapshot{
 		ScenarioID: "fog_harbor",
 		Turn:       18,
 		FoundClues: map[string]bool{
@@ -35,16 +51,16 @@ func TestEvaluateAdviceProtectAnna(t *testing.T) {
 }
 
 func TestEvaluateAdviceReefEvidence(t *testing.T) {
-	advice := EvaluateAdvice(DirectorSnapshot{
+	advice := EvaluateAdvice(Snapshot{
 		ScenarioID: "fog_harbor",
 		FoundClues: map[string]bool{
-			"blood_letter":   true,
-			"tide_chart":     true,
-			"ledger":         true,
-			"parish_record":  true,
-			"anna_warning":   true,
-			"reef_carvings":  false,
-			"sacrifice_room": false,
+			"blood_letter":      true,
+			"tide_chart":        true,
+			"ledger":            true,
+			"parish_record":     true,
+			"anna_warning":      true,
+			"reef_carvings":     false,
+			"sacrifice_chamber": false,
 		},
 		FiredTriggers: map[string]bool{"culprit_confronted": true},
 	})
@@ -55,7 +71,7 @@ func TestEvaluateAdviceReefEvidence(t *testing.T) {
 }
 
 func TestEvaluateAdviceConfrontCulprit(t *testing.T) {
-	advice := EvaluateAdvice(DirectorSnapshot{
+	advice := EvaluateAdvice(Snapshot{
 		ScenarioID: "fog_harbor",
 		FoundClues: map[string]bool{
 			"blood_letter":      true,

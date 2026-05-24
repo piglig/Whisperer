@@ -84,9 +84,38 @@ export GEMINI_API_KEY=...
 `--provider` 不指定时自动探测：仅存在一个 provider key 时自动选择；多个或都没有时默认 Anthropic。
 `--api-key <k>` 显式覆盖。
 
+### 语义记忆与 judge
+
+真实游玩默认启用 OpenAI-compatible embedding 作为长期记忆检索：
+
+```bash
+export OPENAI_API_KEY=sk-...
+./whisperer --embedder openai --embedder-model text-embedding-3-small
+```
+
+使用 Voyage 或其他兼容端点：
+
+```bash
+export VOYAGE_API_KEY=...
+./whisperer --embedder openai_compat \
+  --embedder-base-url https://api.voyageai.com/v1 \
+  --embedder-model voyage-3-large \
+  --embedder-api-key-env VOYAGE_API_KEY
+```
+
+也可以用 `--embedder-api-key <k>` 显式覆盖环境变量。离线开发可显式 `--embedder fake`；
+不需要记忆时用 `--embedder off`。NPC 一致性与知识边界的
+语义复核可用 `--enable-judge` 开启，默认复用 helper 模型。
+
 ---
 
 ## Quickstart
+
+三条主链路：
+
+- **Runtime**：`./whisperer` 进入玩家游玩链路
+- **Authoring**：`./whisperer scenario lint|playtest|verify` 做剧本验收
+- **Observability**：`./whisperer e2e` / `./whisperer replay` 做复盘调试
 
 ```bash
 # 默认：自动建档 + 记者模板调查员 + fog_harbor 剧本 + 加权随机选 variant
@@ -102,24 +131,36 @@ export GEMINI_API_KEY=...
 # 续读已有存档
 ./whisperer --save <save-id>
 
-# 不调 LLM 的冷启动检查
-./whisperer --smoke
-
 # 检查内置剧本的结构与可玩性（不需要 API key）
 ./whisperer scenario lint --scenario fog_harbor
 ./whisperer scenario lint --all
 ./whisperer scenario lint --scenario fog_harbor --json
 
 # 不调 LLM 的雾港动态验收
-./whisperer fog-harbor playtest --path mainline
-./whisperer fog-harbor playtest --all --json
+./whisperer scenario playtest --scenario fog_harbor --path mainline
+./whisperer scenario playtest --scenario fog_harbor --all --json
 
-# 一键健康检查：剧本 lint + 雾港全路径自动验收
-./whisperer fog-harbor verify
-./whisperer fog-harbor verify --json
+# 一键健康检查：剧本 lint + 雾港全路径自动验收 + 内容门槛
+./whisperer scenario verify --scenario fog_harbor
+./whisperer scenario verify --scenario fog_harbor --json
+
+# 调真实 LLM 的端到端验收（不启动 TUI）
+./whisperer e2e --provider openai --input "我环顾码头四周"
+./whisperer e2e --inputs-file cmd/whisperer/e2e_scripts/fog_harbor_mainline.txt --turns 25 --enable-judge
+
+# 本地回放 trace：可传 JSONL 文件，或传 trace 目录自动打开最新记录
+./whisperer replay runs
+./whisperer replay --turn 7 runs/<save-id>/<session>.jsonl
+./whisperer replay --html tmp/replay.html runs/<save-id>/<session>.jsonl
+./whisperer replay --export-script tmp/playtest.txt runs/<save-id>/<session>.jsonl
+./whisperer replay --turn 7 --mark bad,misjudge --note "NPC 台词前后矛盾" runs/<save-id>/<session>.jsonl
 ```
 
-进入 TUI 后输入你想做的事即可（自然语言）。常用命令：
+进入 TUI 后首先看 **案件板 / 可行动项**：它会列出当前目标、地点、阶段和 1-5 个可执行行动。
+按数字可把行动填入输入框，空输入直接 Enter 会执行当前选中的行动；自然语言仍可作为补充。
+每回合结束后，故事卷轴会追加“回合复盘”，解释本回合行动、状态变化、骰子/工具裁定和拦截原因。
+
+常用命令：
 
 | 命令 | 作用 |
 |---|---|
@@ -176,13 +217,15 @@ Orchestrator      RunTurn 推进单回合
 ```
 Whisperer/
 ├── cmd/
-│   ├── whisperer/                CLI / TUI 入口
-│   └── e2esmoke/                 真机 LLM 端到端跑步机
+│   └── whisperer/                Runtime / Authoring / Observability 入口
 ├── internal/
 │   ├── rules/                    纯函数规则引擎
 │   ├── store/                    SQLite + repository
 │   ├── agent/                    LLM SDK adapters + GM/NPC agent + prompts
 │   ├── memory/                   chromem-go 三集合
+│   ├── authoring/                scenario lint / playtest / verify 抽象
+│   ├── director/                 通用 Director 节奏建议
+│   ├── replay/                   trace 回放模型 + HTML viewer
 │   ├── scenario/                 YAML 剧本 + 触发器 + variant + meta
 │   ├── orchestrator/             回合主循环 + tools + SLA + judge
 │   └── tui/                      bubbletea 前端

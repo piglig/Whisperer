@@ -70,7 +70,9 @@ func (v *Validator) CheckWithJudge(ctx context.Context, trace agent.TurnTrace, j
 	}
 
 	// 2a. #6 二判：清理 L1 假阳。
-	r.Violations = filterFailureContradictionsByJudge(ctx, r.Violations, trace, judge)
+	var failureChecks []JudgeCheck
+	r.Violations, failureChecks = filterFailureContradictionsByJudge(ctx, r.Violations, trace, judge)
+	r.JudgeChecks = append(r.JudgeChecks, failureChecks...)
 
 	// 2b. #3 NPC 一致性
 	for _, tc := range trace.ToolCalls {
@@ -90,20 +92,32 @@ func (v *Validator) CheckWithJudge(ctx context.Context, trace agent.TurnTrace, j
 			RecentLines: judgeCtx.NPCRecentLines[out.NPCID],
 			CurrentLine: out.Dialogue,
 		}
-		if vio, err := judge.JudgeNPCConsistency(ctx, input); err == nil && vio != nil {
+		vio, err := judge.JudgeNPCConsistency(ctx, input)
+		check := JudgeCheck{Kind: "npc_consistency", Target: out.NPCID, Passed: err == nil && vio == nil}
+		if err != nil {
+			check.Message = err.Error()
+		} else if vio != nil {
+			check.Message = vio.Message
 			r.Violations = append(r.Violations, *vio)
 		}
+		r.JudgeChecks = append(r.JudgeChecks, check)
 	}
 
 	// 2c. #7 角色知识投射
 	if narrativeMentionsAny(trace.Narrative, knowledgeProjectionKeywords) {
-		if vio, err := judge.JudgeKnowledgeProjection(ctx, JudgeKnowledgeInput{
+		vio, err := judge.JudgeKnowledgeProjection(ctx, JudgeKnowledgeInput{
 			Narrative:      trace.Narrative,
 			SkillsJSON:     judgeCtx.InvestigatorSkillsJSON,
 			OccupationHint: judgeCtx.InvestigatorOccupation,
-		}); err == nil && vio != nil {
+		})
+		check := JudgeCheck{Kind: "knowledge_projection", Passed: err == nil && vio == nil}
+		if err != nil {
+			check.Message = err.Error()
+		} else if vio != nil {
+			check.Message = vio.Message
 			r.Violations = append(r.Violations, *vio)
 		}
+		r.JudgeChecks = append(r.JudgeChecks, check)
 	}
 
 	r.Passed = len(r.Violations) == 0
@@ -112,8 +126,9 @@ func (v *Validator) CheckWithJudge(ctx context.Context, trace agent.TurnTrace, j
 
 // filterFailureContradictionsByJudge 把 L1 标记的 #6 违规交给 Judge 复核：
 // Judge 明确判定为"通过"则移除该违规；其余情况（违规 / 错误）保留。
-func filterFailureContradictionsByJudge(ctx context.Context, vios []Violation, trace agent.TurnTrace, judge Judge) []Violation {
+func filterFailureContradictionsByJudge(ctx context.Context, vios []Violation, trace agent.TurnTrace, judge Judge) ([]Violation, []JudgeCheck) {
 	out := make([]Violation, 0, len(vios))
+	checks := []JudgeCheck{}
 	for _, vio := range vios {
 		if vio.Code != CodeFailureContradict {
 			out = append(out, vio)
@@ -131,18 +146,25 @@ func filterFailureContradictionsByJudge(ctx context.Context, vios []Violation, t
 			Narrative: trace.Narrative,
 			ToolName:  toolName,
 		})
+		check := JudgeCheck{Kind: "failure_contradiction", Target: toolName, Passed: err == nil && judgeRes == nil}
 		if err != nil {
+			check.Message = err.Error()
+			checks = append(checks, check)
 			// Judge 失败 → 保守保留 L1 判定
 			out = append(out, vio)
 			continue
 		}
 		if judgeRes != nil {
+			check.Message = judgeRes.Message
+			checks = append(checks, check)
 			// Judge 也判违规：用 Judge 的 message（更精准）
 			out = append(out, *judgeRes)
+			continue
 		}
+		checks = append(checks, check)
 		// judgeRes == nil 且 err == nil → Judge 明确判通过，丢弃 L1 假阳
 	}
-	return out
+	return out, checks
 }
 
 // JudgeContext 把 orchestrator 抓的快照按需传给 Judge。

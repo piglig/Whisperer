@@ -42,7 +42,6 @@ import (
 	"github.com/zhuzhenwu/whisperer/internal/i18n"
 	"github.com/zhuzhenwu/whisperer/internal/investigator"
 	wlog "github.com/zhuzhenwu/whisperer/internal/log"
-	"github.com/zhuzhenwu/whisperer/internal/memory"
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
 	"github.com/zhuzhenwu/whisperer/internal/store"
@@ -68,8 +67,12 @@ func main() {
 		runScenarioSubcommand(os.Args[2:])
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "fog-harbor" {
-		runFogHarborSubcommand(os.Args[2:])
+	if len(os.Args) > 1 && os.Args[1] == "e2e" {
+		runE2ESubcommand(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "replay" {
+		runReplaySubcommand(os.Args[2:])
 		return
 	}
 
@@ -109,7 +112,13 @@ func main() {
 	apiKey := flag.String("api-key", "", "API key (overrides provider env var)")
 	modelOverride := flag.String("model", fileCfg.Model, "override GM model id (full vendor/model on OpenRouter)")
 	modelHelperOverride := flag.String("model-helper", fileCfg.ModelHelper, "override Haiku/helper model id")
-	smoke := flag.Bool("smoke", false, "smoke test mode: do not call any LLM, print rules samples")
+	embedderKind := flag.String("embedder", fileCfg.Embedder, "memory embedder: openai | fake | off")
+	embedderModel := flag.String("embedder-model", fileCfg.EmbedderModel, "embedding model id")
+	embedderBaseURL := flag.String("embedder-base-url", fileCfg.EmbedderBaseURL, "OpenAI-compatible embeddings base URL")
+	embedderAPIKey := flag.String("embedder-api-key", "", "embedder API key (overrides embedder env var)")
+	embedderKeyEnv := flag.String("embedder-api-key-env", fileCfg.EmbedderAPIKeyEnv, "environment variable containing the embedder API key")
+	enableJudge := flag.Bool("enable-judge", fileCfg.EnableJudge, "enable LLM-as-judge semantic SLA checks")
+	judgeModel := flag.String("judge-model", fileCfg.JudgeModel, "override judge model id; empty uses helper model")
 	investigatorTemplate := flag.String("investigator-template", "journalist", "new-save investigator template: journalist | private_eye | doctor")
 	variantID := flag.String("variant", fileCfg.Variant, "force a specific variant id (default: weighted random)")
 	seed := flag.Int64("seed", fileCfg.Seed, "deterministic variant selection seed (0 = unix nano)")
@@ -134,10 +143,7 @@ func main() {
 	}
 	globalTranslator = tr
 
-	if *smoke {
-		runSmoke()
-		return
-	}
+	ctx := context.Background()
 
 	resolvedKey := resolveKey(*provider, *apiKey)
 	if resolvedKey == "" {
@@ -147,8 +153,6 @@ func main() {
 			"hint", "set the env var or pass --api-key")
 		os.Exit(2)
 	}
-
-	ctx := context.Background()
 
 	st, err := store.Open(ctx, *dbPath)
 	if err != nil {
@@ -195,12 +199,21 @@ func main() {
 	_ = chosenVariant
 
 	saveMemDir := memoryDirForSave(*memDir, currentSaveID)
-	mem, err := memory.New(saveMemDir, memory.NewFakeEmbedder(0))
+	mem, memoryMode, err := buildMemory(memoryRuntimeConfig{
+		Kind:       *embedderKind,
+		Model:      *embedderModel,
+		BaseURL:    *embedderBaseURL,
+		Key:        *embedderAPIKey,
+		KeyEnv:     *embedderKeyEnv,
+		PersistDir: saveMemDir,
+	})
 	if err != nil {
 		fail("open memory", err)
 	}
-	defer mem.Close()
-	slog.Info("memory initialized", "dir", saveMemDir)
+	if mem != nil {
+		defer mem.Close()
+	}
+	slog.Info("memory initialized", "mode", memoryMode, "dir", saveMemDir)
 
 	if needsScenarioApply {
 		engine := scenario.New(scn, st.Repo(), mem)
@@ -216,6 +229,11 @@ func main() {
 	if *modelHelperOverride != "" {
 		modelNPC = agent.Model(*modelHelperOverride)
 	}
+	modelJudge := modelNPC
+	if *judgeModel != "" {
+		modelJudge = agent.Model(*judgeModel)
+	}
+	judge := buildJudge(*enableJudge, llm, modelJudge)
 
 	orch, err := orchestrator.New(orchestrator.Config{
 		Store:         st,
@@ -225,6 +243,7 @@ func main() {
 		LLMNPC:        llm,
 		ModelGM:       modelGM,
 		ModelNPC:      modelNPC,
+		Judge:         judge,
 		SaveID:        currentSaveID,
 		RNG:           rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0xc0ffee)),
 		AutosaveEvery: 3,
@@ -242,10 +261,6 @@ func main() {
 	if _, err := prog.Run(); err != nil {
 		fail("tui", err)
 	}
-}
-
-func runSmoke() {
-	slog.Info("smoke check passed", "llm_called", false)
 }
 
 func resolveKey(provider, override string) string {

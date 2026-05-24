@@ -22,12 +22,30 @@ const (
 )
 
 type TurnDecision struct {
-	Intent       TurnIntent       `json:"intent"`
-	PlayerInput  string           `json:"player_input"`
-	Action       PlayerAction     `json:"action"`
-	StateChanges []DecisionChange `json:"state_changes,omitempty"`
-	Mechanics    []DecisionAction `json:"mechanics,omitempty"`
-	Checks       []DecisionCheck  `json:"checks,omitempty"`
+	Intent         TurnIntent       `json:"intent"`
+	PlayerInput    string           `json:"player_input"`
+	Action         PlayerAction     `json:"action"`
+	ActionDecision ActionDecision   `json:"action_decision"`
+	StateChanges   []DecisionChange `json:"state_changes,omitempty"`
+	Mechanics      []DecisionAction `json:"mechanics,omitempty"`
+	Checks         []DecisionCheck  `json:"checks,omitempty"`
+}
+
+type ActionDecisionStatus string
+
+const (
+	ActionAllowed    ActionDecisionStatus = "allowed"
+	ActionBlocked    ActionDecisionStatus = "blocked"
+	ActionRedirected ActionDecisionStatus = "redirected"
+)
+
+type ActionDecision struct {
+	Status             ActionDecisionStatus `json:"status"`
+	ReasonCode         string               `json:"reason_code,omitempty"`
+	PlayerFacingReason string               `json:"player_facing_reason,omitempty"`
+	DebugReason        string               `json:"debug_reason,omitempty"`
+	RequiredClues      []string             `json:"required_clues,omitempty"`
+	SuggestedActions   []string             `json:"suggested_actions,omitempty"`
 }
 
 type DecisionChange struct {
@@ -54,9 +72,10 @@ type DecisionCheck struct {
 
 func buildTurnDecision(action PlayerAction, trace agent.TurnTrace, summary TurnSummary, report sla.Report) TurnDecision {
 	decision := TurnDecision{
-		Intent:      action.Kind,
-		PlayerInput: strings.TrimSpace(action.Raw),
-		Action:      action,
+		Intent:         action.Kind,
+		PlayerInput:    strings.TrimSpace(action.Raw),
+		Action:         action,
+		ActionDecision: ActionDecision{Status: ActionAllowed},
 	}
 	if decision.Intent == IntentUnknown {
 		decision.Intent = inferIntent(action.Text, trace.ToolCalls)

@@ -13,6 +13,9 @@ import (
 type ActionGuardResult struct {
 	Allowed          bool         `json:"allowed"`
 	Reason           string       `json:"reason,omitempty"`
+	ReasonCode       string       `json:"reason_code,omitempty"`
+	DebugReason      string       `json:"debug_reason,omitempty"`
+	RequiredClues    []string     `json:"required_clues,omitempty"`
 	Suggestions      []string     `json:"suggestions,omitempty"`
 	NormalizedAction PlayerAction `json:"normalized_action"`
 }
@@ -51,36 +54,36 @@ func guardActionSource(ctx context.Context, repo *store.Repository, saveID strin
 	case "fallback":
 		return result
 	default:
-		return deny(result, "未知的剧本行动来源："+source.Kind)
+		return denyCode(result, "unknown_action_source", "未知的剧本行动来源："+source.Kind)
 	}
 }
 
 func guardLeadSource(ctx context.Context, repo *store.Repository, saveID string, scn *scenario.Scenario, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "location")
 	if !ok {
-		return deny(result, "这个推荐调查行动缺少地点目标。")
+		return denyCode(result, "missing_location_target", "这个推荐调查行动缺少地点目标。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	if target.ID != sv.CurrentLocationID {
-		return deny(result, "这个调查行动不属于当前地点。", "请从当前场景的可选行动里重新选择。")
+		return denyCode(result, "stale_location_action", "这个调查行动不属于当前地点。", "请从当前场景的可选行动里重新选择。")
 	}
 	loc, ok := scenarioLocation(scn, target.ID)
 	if !ok {
-		return deny(result, "剧本中找不到这个地点："+target.ID)
+		return denyCode(result, "unknown_location", "剧本中找不到这个地点："+target.ID)
 	}
 	locID, idxText, ok := strings.Cut(result.NormalizedAction.Source.ID, ":")
 	if !ok {
-		return deny(result, "这个调查行动来源格式无效。")
+		return denyCode(result, "invalid_action_source", "这个调查行动来源格式无效。")
 	}
 	if locID != target.ID {
-		return deny(result, "这个调查行动来源和目标地点不一致。", "请重新选择当前显示的可选行动。")
+		return denyCode(result, "action_source_target_mismatch", "这个调查行动来源和目标地点不一致。", "请重新选择当前显示的可选行动。")
 	}
 	idx, err := strconv.Atoi(idxText)
 	if err != nil || idx < 0 || idx >= len(loc.Leads) {
-		return deny(result, "这个调查行动已经不在当前地点可选项中。", "请重新选择当前显示的可选行动。")
+		return denyCode(result, "stale_lead", "这个调查行动已经不在当前地点可选项中。", "请重新选择当前显示的可选行动。")
 	}
 	return result
 }
@@ -88,23 +91,23 @@ func guardLeadSource(ctx context.Context, repo *store.Repository, saveID string,
 func guardDialogueOptionSource(ctx context.Context, repo *store.Repository, saveID string, scn *scenario.Scenario, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "npc")
 	if !ok {
-		return deny(result, "这个对话行动缺少人物目标。")
+		return denyCode(result, "missing_npc_target", "这个对话行动缺少人物目标。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	npc, err := repo.GetNPC(ctx, target.ID)
 	if err != nil {
-		return deny(result, "这个人物目前不存在："+target.ID)
+		return denyCode(result, "unknown_npc", "这个人物目前不存在："+target.ID)
 	}
 	snpc, ok := scenarioNPC(scn, target.ID)
 	if !ok {
-		return deny(result, "剧本中找不到这个人物："+target.ID)
+		return denyCode(result, "unknown_scenario_npc", "剧本中找不到这个人物："+target.ID)
 	}
 	found, err := foundClueSet(ctx, repo, saveID)
 	if err != nil {
-		return deny(result, "无法读取已发现线索。")
+		return denyCode(result, "clue_read_failed", "无法读取已发现线索。")
 	}
 	stage := scenario.NormalizeStage(scn, sv.Stage)
 	for _, opt := range scenario.DialogueOptionsFor(snpc, stage, found) {
@@ -112,7 +115,8 @@ func guardDialogueOptionSource(ctx context.Context, repo *store.Repository, save
 			return result
 		}
 	}
-	return deny(result,
+	return denyCode(result,
+		"dialogue_option_unavailable",
 		fmt.Sprintf("%s 的这个对话选项当前不可用。", npc.Name),
 		"请根据当前阶段和已发现线索重新选择可用对话。",
 	)
@@ -121,23 +125,23 @@ func guardDialogueOptionSource(ctx context.Context, repo *store.Repository, save
 func guardItemActionSource(ctx context.Context, repo *store.Repository, saveID string, scn *scenario.Scenario, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "item")
 	if !ok {
-		return deny(result, "这个物品行动缺少物品目标。")
+		return denyCode(result, "missing_item_target", "这个物品行动缺少物品目标。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	item, err := repo.GetItem(ctx, target.ID)
 	if err != nil {
-		return deny(result, "这个物品目前不存在："+target.ID)
+		return denyCode(result, "unknown_item", "这个物品目前不存在："+target.ID)
 	}
 	sitem, ok := scenarioItem(scn, target.ID)
 	if !ok {
-		return deny(result, "剧本中找不到这个物品："+target.ID)
+		return denyCode(result, "unknown_scenario_item", "剧本中找不到这个物品："+target.ID)
 	}
 	found, err := foundClueSet(ctx, repo, saveID)
 	if err != nil {
-		return deny(result, "无法读取已发现线索。")
+		return denyCode(result, "clue_read_failed", "无法读取已发现线索。")
 	}
 	stage := scenario.NormalizeStage(scn, sv.Stage)
 	for _, action := range scenario.ItemActionsFor(sitem, item, stage, sv.CurrentLocationID, found) {
@@ -145,7 +149,8 @@ func guardItemActionSource(ctx context.Context, repo *store.Repository, saveID s
 			return result
 		}
 	}
-	return deny(result,
+	return denyCode(result,
+		"item_action_unavailable",
 		fmt.Sprintf("%s 的这个物品行动当前不可用。", item.Name),
 		"请确认阶段、地点、物品归属和线索条件后再尝试。",
 	)
@@ -154,15 +159,15 @@ func guardItemActionSource(ctx context.Context, repo *store.Repository, saveID s
 func guardMoveAction(ctx context.Context, repo *store.Repository, saveID string, scn *scenario.Scenario, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "location")
 	if !ok {
-		return deny(result, "你想去哪里还不够明确。", "选择一个地点，或直接输入“去酒馆 / 去巡警所 / 去灯塔”。")
+		return denyCode(result, "missing_location_target", "你想去哪里还不够明确。", "选择一个地点，或直接输入“去酒馆 / 去巡警所 / 去灯塔”。")
 	}
 	loc, err := repo.GetLocation(ctx, target.ID)
 	if err != nil {
-		return deny(result, "这个地点目前不存在："+target.ID, "从右侧案件卡的可见地点里选择下一步。")
+		return denyCode(result, "unknown_location", "这个地点目前不存在："+target.ID, "从右侧案件卡的可见地点里选择下一步。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	if sv.CurrentLocationID == "" || sv.CurrentLocationID == loc.ID {
 		return result
@@ -172,7 +177,8 @@ func guardMoveAction(ctx context.Context, repo *store.Repository, saveID string,
 		if curLoc, err := repo.GetLocation(ctx, sv.CurrentLocationID); err == nil {
 			current = curLoc.Name
 		}
-		return deny(result,
+		return denyCode(result,
+			"location_not_connected",
 			fmt.Sprintf("从%s不能直接前往%s。", current, loc.Name),
 			"先移动到相邻地点，或调查当前地点寻找新的路径。",
 		)
@@ -183,25 +189,26 @@ func guardMoveAction(ctx context.Context, repo *store.Repository, saveID string,
 func guardTalkAction(ctx context.Context, repo *store.Repository, saveID string, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "npc")
 	if !ok {
-		return deny(result, "你想和谁交谈还不够明确。", "选择在场人物，或输入“问范斯……”这类明确目标。")
+		return denyCode(result, "missing_npc_target", "你想和谁交谈还不够明确。", "选择在场人物，或输入“问范斯……”这类明确目标。")
 	}
 	npc, err := repo.GetNPC(ctx, target.ID)
 	if err != nil {
-		return deny(result, "这个人物目前不存在："+target.ID, "从右侧人物卡选择在场人物。")
+		return denyCode(result, "unknown_npc", "这个人物目前不存在："+target.ID, "从右侧人物卡选择在场人物。")
 	}
 	if !npc.Alive {
-		return deny(result, npc.Name+"已经无法交谈。")
+		return denyCode(result, "npc_unavailable", npc.Name+"已经无法交谈。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	if npc.LocationID != "" && sv.CurrentLocationID != "" && npc.LocationID != sv.CurrentLocationID {
 		place := npc.LocationID
 		if loc, err := repo.GetLocation(ctx, npc.LocationID); err == nil {
 			place = loc.Name
 		}
-		return deny(result,
+		return denyCode(result,
+			"npc_not_present",
 			fmt.Sprintf("%s不在当前地点。", npc.Name),
 			"先前往"+place+"，再和"+npc.Name+"交谈。",
 		)
@@ -212,23 +219,24 @@ func guardTalkAction(ctx context.Context, repo *store.Repository, saveID string,
 func guardUseItemAction(ctx context.Context, repo *store.Repository, saveID string, result ActionGuardResult) ActionGuardResult {
 	target, ok := firstTarget(result.NormalizedAction, "item")
 	if !ok {
-		return deny(result, "你想使用哪个物品还不够明确。", "选择背包或当前地点里的物品。")
+		return denyCode(result, "missing_item_target", "你想使用哪个物品还不够明确。", "选择背包或当前地点里的物品。")
 	}
 	item, err := repo.GetItem(ctx, target.ID)
 	if err != nil {
-		return deny(result, "这个物品目前不存在："+target.ID, "从背包或当前地点物品中选择。")
+		return denyCode(result, "unknown_item", "这个物品目前不存在："+target.ID, "从背包或当前地点物品中选择。")
 	}
 	if item.Destroyed {
-		return deny(result, item.Name+"已经损毁，不能再使用。")
+		return denyCode(result, "item_destroyed", item.Name+"已经损毁，不能再使用。")
 	}
 	sv, err := repo.GetSave(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取当前存档状态。")
+		return denyCode(result, "state_read_failed", "无法读取当前存档状态。")
 	}
 	if itemAccessible(ctx, repo, sv.CurrentLocationID, item) {
 		return result
 	}
-	return deny(result,
+	return denyCode(result,
+		"item_not_accessible",
 		item.Name+"不在你能直接使用的位置。",
 		"先找到或取得"+item.Name+"，再尝试使用。",
 	)
@@ -240,7 +248,7 @@ func guardReportAction(ctx context.Context, repo *store.Repository, saveID strin
 	}
 	found, err := repo.ListFoundClues(ctx, saveID)
 	if err != nil {
-		return deny(result, "无法读取已发现线索。")
+		return denyCode(result, "clue_read_failed", "无法读取已发现线索。")
 	}
 	foundSet := map[string]bool{}
 	for _, clue := range found {
@@ -255,7 +263,9 @@ func guardReportAction(ctx context.Context, repo *store.Repository, saveID strin
 	if len(missing) == 0 {
 		return result
 	}
-	return deny(result,
+	result.RequiredClues = append([]string(nil), missing...)
+	return denyCode(result,
+		"missing_key_clues",
 		fmt.Sprintf("现在证据还不足，至少还缺 %d 条关键线索。", len(missing)),
 		"继续调查目标、风险和人物关系；结案前尽量补齐关键证据。",
 	)
@@ -359,8 +369,14 @@ func firstTarget(action PlayerAction, kind string) (ActionTarget, bool) {
 }
 
 func deny(result ActionGuardResult, reason string, suggestions ...string) ActionGuardResult {
+	return denyCode(result, "action_blocked", reason, suggestions...)
+}
+
+func denyCode(result ActionGuardResult, code, reason string, suggestions ...string) ActionGuardResult {
 	result.Allowed = false
+	result.ReasonCode = code
 	result.Reason = reason
+	result.DebugReason = reason
 	result.Suggestions = suggestions
 	return result
 }
@@ -383,8 +399,16 @@ func buildGuardDecision(action PlayerAction, result ActionGuardResult) TurnDecis
 		Intent:      action.Kind,
 		PlayerInput: action.Raw,
 		Action:      result.NormalizedAction,
+		ActionDecision: ActionDecision{
+			Status:             ActionBlocked,
+			ReasonCode:         result.ReasonCode,
+			PlayerFacingReason: result.Reason,
+			DebugReason:        result.DebugReason,
+			RequiredClues:      append([]string(nil), result.RequiredClues...),
+			SuggestedActions:   append([]string(nil), result.Suggestions...),
+		},
 		Checks: []DecisionCheck{{
-			Code:    "action_guard",
+			Code:    nonEmpty(result.ReasonCode, "action_guard"),
 			Passed:  result.Allowed,
 			Message: result.Reason,
 		}},

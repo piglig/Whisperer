@@ -1,48 +1,17 @@
-package fogharbor
+package director
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/zhuzhenwu/whisperer/internal/orchestrator"
 	"github.com/zhuzhenwu/whisperer/internal/scenario"
-	"github.com/zhuzhenwu/whisperer/internal/store"
 )
 
-type Urgency string
-
-const (
-	UrgencyNormal   Urgency = "normal"
-	UrgencyWarning  Urgency = "warning"
-	UrgencyCritical Urgency = "critical"
-)
-
-type DirectorSnapshot struct {
-	ScenarioID     string
-	Stage          string
-	Turn           int
-	LocationID     string
-	TimeOfDay      store.TimeOfDay
-	FoundClues     map[string]bool
-	FiredTriggers  map[string]bool
-	Threats        []scenario.ThreatStatus
-	AvailableNPCs  []store.NPC
-	AvailableItems []store.Item
+func isFogHarbor(id string) bool {
+	return id == "fog_harbor" || id == "fh"
 }
 
-type Advice struct {
-	PrimaryObjective string   `json:"primary_objective"`
-	Reason           string   `json:"reason"`
-	Urgency          Urgency  `json:"urgency"`
-	SuggestedAction  string   `json:"suggested_action,omitempty"`
-	BlockedBy        []string `json:"blocked_by,omitempty"`
-	Risk             string   `json:"risk,omitempty"`
-}
-
-func EvaluateAdvice(s DirectorSnapshot) Advice {
-	if s.ScenarioID != "" && s.ScenarioID != "fog_harbor" && s.ScenarioID != "fh" {
-		return Advice{}
-	}
+func evaluateFogHarborAdvice(s Snapshot) Advice {
 	found := s.FoundClues
 	if found == nil {
 		found = map[string]bool{}
@@ -122,46 +91,7 @@ func EvaluateAdvice(s DirectorSnapshot) Advice {
 	}
 }
 
-func RankActions(advice Advice, actions []orchestrator.SuggestedAction) []orchestrator.SuggestedAction {
-	if advice.PrimaryObjective == "" || len(actions) < 2 {
-		return actions
-	}
-	ranked := append([]orchestrator.SuggestedAction(nil), actions...)
-	sort.SliceStable(ranked, func(i, j int) bool {
-		return actionScore(advice, ranked[i]) > actionScore(advice, ranked[j])
-	})
-	return ranked
-}
-
-func actionScore(advice Advice, action orchestrator.SuggestedAction) int {
-	text := strings.ToLower(action.Label + " " + action.Action.Text + " " + action.DisplayInput())
-	score := 0
-	for _, token := range adviceKeywords(advice) {
-		if strings.Contains(text, strings.ToLower(token)) {
-			score += 10
-		}
-	}
-	switch action.Action.Kind {
-	case orchestrator.IntentInvestigate:
-		if advice.PrimaryObjective == "确认露西失踪的第一现场" || advice.PrimaryObjective == "进入礁洞取得非人证据" {
-			score += 3
-		}
-	case orchestrator.IntentTalk:
-		if advice.PrimaryObjective == "保护安娜" ||
-			advice.PrimaryObjective == "拿到账册和出诊链条" ||
-			advice.PrimaryObjective == "核对三十年失踪记录" ||
-			advice.PrimaryObjective == "对峙当代执行者" {
-			score += 3
-		}
-	case orchestrator.IntentUseItem:
-		if len(advice.BlockedBy) > 0 {
-			score += 1
-		}
-	}
-	return score
-}
-
-func adviceKeywords(advice Advice) []string {
+func fogHarborAdviceKeywords(advice Advice) []string {
 	switch advice.PrimaryObjective {
 	case "确认露西失踪的第一现场":
 		return []string{"公告栏", "退潮", "潮汐", "巡警所", "海莲娜", "码头"}
@@ -178,14 +108,32 @@ func adviceKeywords(advice Advice) []string {
 	case "整理证据并离港":
 		return []string{"证据", "报道", "离港", "整理", "笔记"}
 	default:
-		var out []string
-		out = append(out, strings.Fields(advice.PrimaryObjective)...)
-		out = append(out, advice.BlockedBy...)
-		return out
+		return nil
 	}
 }
 
-func shouldProtectAnna(s DirectorSnapshot, found, fired map[string]bool) bool {
+func fogHarborActionKindScore(advice Advice, action orchestrator.SuggestedAction) int {
+	switch action.Action.Kind {
+	case orchestrator.IntentInvestigate:
+		if advice.PrimaryObjective == "确认露西失踪的第一现场" || advice.PrimaryObjective == "进入礁洞取得非人证据" {
+			return 3
+		}
+	case orchestrator.IntentTalk:
+		if advice.PrimaryObjective == "保护安娜" ||
+			advice.PrimaryObjective == "拿到账册和出诊链条" ||
+			advice.PrimaryObjective == "核对三十年失踪记录" ||
+			advice.PrimaryObjective == "对峙当代执行者" {
+			return 3
+		}
+	case orchestrator.IntentUseItem:
+		if len(advice.BlockedBy) > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
+func shouldProtectAnna(s Snapshot, found, fired map[string]bool) bool {
 	if !found["anna_warning"] || fired["culprit_confronted"] {
 		return false
 	}
